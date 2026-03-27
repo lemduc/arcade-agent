@@ -2,7 +2,12 @@
 
 from pathlib import Path
 
-from arcade_agent.parsers.c import CParser
+import pytest
+
+try:
+    from arcade_agent.parsers.c import CParser
+except ImportError:
+    pytest.skip("tree-sitter-c not installed", allow_module_level=True)
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "c_project"
 
