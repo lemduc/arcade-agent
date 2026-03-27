@@ -106,7 +106,10 @@ def query(
         ranked = sorted(architecture.components, key=lambda c: -len(c.entities))[:10]
         return {
             "largest_components": [
-                {"name": c.name, "entity_count": len(c.entities), "responsibility": c.responsibility}
+                {
+                    "name": c.name, "entity_count": len(c.entities),
+                    "responsibility": c.responsibility,
+                }
                 for c in ranked
             ]
         }

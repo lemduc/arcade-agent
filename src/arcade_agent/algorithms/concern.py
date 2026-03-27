@@ -210,7 +210,7 @@ def detect_concerns_llm(
         List of smell dicts with keys: smell_type, severity,
         affected_components, description, explanation, suggestion.
     """
-    from arcade_agent.llm import ask_claude_json, MOCK_MODE
+    from arcade_agent.llm import MOCK_MODE, ask_claude_json
 
     if MOCK_MODE:
         log.info("Mock mode — skipping LLM concern detection")
@@ -288,7 +288,7 @@ def extract_concerns_llm(
         Dict mapping component name to a list of concern labels
         (e.g. ``{"Clustering": ["agglomerative clustering", "similarity measures"]}``).
     """
-    from arcade_agent.llm import ask_claude_json, MOCK_MODE
+    from arcade_agent.llm import MOCK_MODE, ask_claude_json
 
     if MOCK_MODE:
         log.info("Mock mode — skipping LLM concern extraction")
@@ -325,5 +325,5 @@ Respond with ONLY valid JSON:
     concerns: dict[str, list[str]] = {}
     for name, labels in result.get("concerns", {}).items():
         if name in valid_names and isinstance(labels, list):
-            concerns[name] = [str(l) for l in labels[:5]]
+            concerns[name] = [str(label) for label in labels[:5]]
     return concerns

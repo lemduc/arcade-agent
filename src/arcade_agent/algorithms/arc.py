@@ -35,7 +35,7 @@ def _tag_entities_llm(
     Entities are sent in package-grouped batches to stay within the token
     budget.  Returns a mapping ``{entity_fqn: [concern_label, ...]}``.
     """
-    from arcade_agent.llm import ask_claude_json, MOCK_MODE
+    from arcade_agent.llm import MOCK_MODE, ask_claude_json
 
     if MOCK_MODE:
         return _tag_entities_heuristic(dep_graph)
@@ -102,7 +102,7 @@ Respond with ONLY valid JSON mapping each FQN to its concern labels:
         for fqn in batch:
             labels = result.get(fqn, [])
             if isinstance(labels, list) and labels:
-                all_tags[fqn] = [str(l).lower().strip() for l in labels[:3]]
+                all_tags[fqn] = [str(label).lower().strip() for label in labels[:3]]
             else:
                 # Fallback: derive from package name
                 e = dep_graph.entities[fqn]
@@ -268,7 +268,6 @@ def arc(
     Returns:
         Architecture with recovered components.
     """
-    from arcade_agent.algorithms.similarity import unbiased_ellenberg
 
     entities = list(dep_graph.entities.keys())
     if not entities:

@@ -4,7 +4,6 @@ import inspect
 from dataclasses import dataclass, field
 from typing import Any, Callable, get_type_hints
 
-
 _TOOLS: dict[str, "ToolDef"] = {}
 
 

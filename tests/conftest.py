@@ -7,7 +7,6 @@ import pytest
 from arcade_agent.models.architecture import Architecture, Component
 from arcade_agent.models.graph import DependencyGraph, Edge, Entity
 
-
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -59,9 +58,21 @@ def sample_graph():
         ),
     }
     edges = [
-        Edge(source="com.example.calc.Calculator", target="com.example.util.MathHelper", relation="import"),
-        Edge(source="com.example.calc.AdvancedCalculator", target="com.example.util.MathHelper", relation="import"),
-        Edge(source="com.example.calc.AdvancedCalculator", target="com.example.calc.Calculator", relation="extends"),
+        Edge(
+            source="com.example.calc.Calculator",
+            target="com.example.util.MathHelper",
+            relation="import",
+        ),
+        Edge(
+            source="com.example.calc.AdvancedCalculator",
+            target="com.example.util.MathHelper",
+            relation="import",
+        ),
+        Edge(
+            source="com.example.calc.AdvancedCalculator",
+            target="com.example.calc.Calculator",
+            relation="extends",
+        ),
     ]
     packages = {
         "com.example.calc": ["com.example.calc.Calculator", "com.example.calc.AdvancedCalculator"],

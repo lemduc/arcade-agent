@@ -16,7 +16,10 @@ from arcade_agent.registry import tool
 
 @tool(
     name="visualize",
-    description="Generate architecture reports and diagrams in HTML, DOT, JSON, RSF, or Mermaid format.",
+    description=(
+        "Generate architecture reports and diagrams "
+        "in HTML, DOT, JSON, RSF, or Mermaid format."
+    ),
 )
 def visualize(
     repo_name: str,
@@ -58,7 +61,10 @@ def visualize(
         format = ext_map.get(output_path.suffix, "html")
 
     if format == "html":
-        export_html(repo_name, version, dep_graph, architecture, smells, metrics, output_path, concerns=concerns)
+        export_html(
+            repo_name, version, dep_graph, architecture,
+            smells, metrics, output_path, concerns=concerns,
+        )
     elif format == "dot":
         content = export_dot(architecture, dep_graph)
         output_path.write_text(content)

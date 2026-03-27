@@ -9,7 +9,10 @@ from arcade_agent.registry import tool
 
 @tool(
     name="parse",
-    description="Parse source code and extract a dependency graph with entities, edges, and packages.",
+    description=(
+        "Parse source code and extract a dependency graph "
+        "with entities, edges, and packages."
+    ),
 )
 def parse(
     source_path: str,

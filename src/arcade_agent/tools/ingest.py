@@ -210,7 +210,9 @@ def ingest(
     sr = Path(source_root) if source_root else None
     if source_path.is_dir():
         return _ingest_local(source_path, language, exclude_tests, sr)
-    return _clone_and_ingest(source, language, Path(work_dir) if work_dir else None, exclude_tests, sr)
+    return _clone_and_ingest(
+        source, language, Path(work_dir) if work_dir else None, exclude_tests, sr,
+    )
 
 
 def _ingest_local(

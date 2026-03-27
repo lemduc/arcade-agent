@@ -14,16 +14,28 @@ def test_detect_no_smells(sample_architecture, sample_graph):
 def test_detect_dependency_cycle():
     """Create a graph with a known cycle."""
     entities = {
-        "A": Entity(fqn="A", name="A", package="p1", file_path="A.java", kind="class", language="java"),
-        "B": Entity(fqn="B", name="B", package="p2", file_path="B.java", kind="class", language="java"),
-        "C": Entity(fqn="C", name="C", package="p3", file_path="C.java", kind="class", language="java"),
+        "A": Entity(
+            fqn="A", name="A", package="p1",
+            file_path="A.java", kind="class", language="java",
+        ),
+        "B": Entity(
+            fqn="B", name="B", package="p2",
+            file_path="B.java", kind="class", language="java",
+        ),
+        "C": Entity(
+            fqn="C", name="C", package="p3",
+            file_path="C.java", kind="class", language="java",
+        ),
     }
     edges = [
         Edge(source="A", target="B", relation="import"),
         Edge(source="B", target="C", relation="import"),
         Edge(source="C", target="A", relation="import"),
     ]
-    graph = DependencyGraph(entities=entities, edges=edges, packages={"p1": ["A"], "p2": ["B"], "p3": ["C"]})
+    graph = DependencyGraph(
+        entities=entities, edges=edges,
+        packages={"p1": ["A"], "p2": ["B"], "p3": ["C"]},
+    )
 
     arch = Architecture(
         components=[

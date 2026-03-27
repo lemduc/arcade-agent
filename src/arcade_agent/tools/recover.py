@@ -63,7 +63,10 @@ def _package_based_recovery(
 
     return Architecture(
         components=components,
-        rationale=f"Package-based grouping (depth={depth} after common prefix '{'.'.join(common)}').",
+        rationale=(
+            f"Package-based grouping (depth={depth} "
+            f"after common prefix '{'.'.join(common)}')."
+        ),
         algorithm="pkg",
     )
 

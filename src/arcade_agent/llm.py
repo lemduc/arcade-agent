@@ -9,7 +9,6 @@ import json
 import os
 import subprocess
 
-
 MOCK_MODE = os.environ.get("ARCADE_MOCK", "").strip() in ("1", "true", "yes")
 CLAUDE_MODEL = os.environ.get("ARCADE_MODEL", "sonnet")
 

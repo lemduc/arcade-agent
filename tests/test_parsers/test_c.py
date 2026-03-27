@@ -4,7 +4,6 @@ from pathlib import Path
 
 from arcade_agent.parsers.c import CParser
 
-
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "c_project"
 
 

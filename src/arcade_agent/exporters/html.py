@@ -1,6 +1,6 @@
 """HTML report generation using Jinja2 and Mermaid.js."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from jinja2 import Template
@@ -10,7 +10,6 @@ from arcade_agent.models.architecture import Architecture
 from arcade_agent.models.graph import DependencyGraph
 from arcade_agent.models.metrics import MetricResult
 from arcade_agent.models.smells import SmellInstance
-
 
 REPORT_TEMPLATE = Template("""\
 <!DOCTYPE html>

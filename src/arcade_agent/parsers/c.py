@@ -9,7 +9,6 @@ from tree_sitter import Language, Parser
 from arcade_agent.models.graph import DependencyGraph, Edge, Entity
 from arcade_agent.parsers.base import LanguageParser, register_parser
 
-
 C_LANGUAGE = Language(tsc.language())
 CPP_LANGUAGE = Language(tscpp.language())
 
@@ -271,7 +270,10 @@ class CParser(LanguageParser):
 
             # Inheritance edges (C++)
             if entity.superclass and entity.superclass in fqn_index:
-                edges.append(Edge(source=fqn, target=fqn_index[entity.superclass], relation="extends"))
+                edges.append(Edge(
+                    source=fqn, target=fqn_index[entity.superclass],
+                    relation="extends",
+                ))
             for base in entity.interfaces:
                 if base in fqn_index:
                     edges.append(Edge(source=fqn, target=fqn_index[base], relation="extends"))

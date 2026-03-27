@@ -18,4 +18,7 @@ class TypeScriptParser(LanguageParser):
         return [".ts", ".tsx", ".js", ".jsx"]
 
     def parse(self, files: list[Path], root: Path) -> DependencyGraph:
-        raise NotImplementedError("TypeScript parser not yet implemented. Install tree-sitter-typescript and contribute!")
+        raise NotImplementedError(
+            "TypeScript parser not yet implemented. "
+            "Install tree-sitter-typescript and contribute!"
+        )

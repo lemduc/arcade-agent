@@ -37,7 +37,11 @@ def test_java_parser_edges(java_files, fixtures_dir):
     assert ("com.example.calc.Calculator", "com.example.util.MathHelper", "import") in edge_tuples
 
     # AdvancedCalculator extends Calculator
-    assert ("com.example.calc.AdvancedCalculator", "com.example.calc.Calculator", "extends") in edge_tuples
+    assert (
+        "com.example.calc.AdvancedCalculator",
+        "com.example.calc.Calculator",
+        "extends",
+    ) in edge_tuples
 
 
 def test_java_parser_packages(java_files, fixtures_dir):

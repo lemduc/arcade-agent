@@ -8,7 +8,6 @@ from tree_sitter import Language, Parser
 from arcade_agent.models.graph import DependencyGraph, Edge, Entity
 from arcade_agent.parsers.base import LanguageParser, register_parser
 
-
 JAVA_LANGUAGE = Language(tsjava.language())
 
 

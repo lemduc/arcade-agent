@@ -1,6 +1,5 @@
 """Tests for ARC (Architecture Recovery using Concerns) algorithm."""
 
-import math
 from unittest.mock import patch
 
 from arcade_agent.algorithms.arc import (
@@ -52,9 +51,21 @@ def _make_graph():
         ),
     }
     edges = [
-        Edge(source="com.app.auth.LoginService", target="com.app.auth.TokenValidator", relation="import"),
-        Edge(source="com.app.db.UserRepository", target="com.app.db.ConnectionPool", relation="import"),
-        Edge(source="com.app.ui.Dashboard", target="com.app.ui.Renderer", relation="import"),
+        Edge(
+            source="com.app.auth.LoginService",
+            target="com.app.auth.TokenValidator",
+            relation="import",
+        ),
+        Edge(
+            source="com.app.db.UserRepository",
+            target="com.app.db.ConnectionPool",
+            relation="import",
+        ),
+        Edge(
+            source="com.app.ui.Dashboard",
+            target="com.app.ui.Renderer",
+            relation="import",
+        ),
     ]
     packages = {
         "com.app.auth": ["com.app.auth.LoginService", "com.app.auth.TokenValidator"],

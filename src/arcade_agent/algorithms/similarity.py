@@ -6,7 +6,6 @@ Implements measures used in Weighted Clustering Algorithm (WCA):
 - Structure-based Coupling Measure (SCM)
 """
 
-from arcade_agent.models.graph import DependencyGraph
 
 
 def _get_neighbors(fqn: str, adjacency: dict[str, list[str]]) -> set[str]:
