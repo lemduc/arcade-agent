@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arcade-agent"
+version = "0.1.0"
+description = "Framework-agnostic tool library for software architecture analysis"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "tree-sitter>=0.24.0",
+    "tree-sitter-java>=0.23.0",
+    "tree-sitter-python>=0.23.0",
+    "networkx>=3.4",
+    "jinja2>=3.1",
+    "gitpython>=3.1",
+    "scipy>=1.14",
+    "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+languages = [
+    "tree-sitter-typescript>=0.23.0",
+    "tree-sitter-c>=0.23.0",
+    "tree-sitter-cpp>=0.23.0",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
