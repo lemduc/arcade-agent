@@ -1,7 +1,19 @@
-"""Concern overload and scattered functionality detection."""
+"""Concern overload and scattered functionality detection.
+
+Provides both heuristic-based detection (default) and LLM-powered semantic
+analysis via Claude CLI.  Set ``use_llm=True`` on the public helpers or call
+the ``_llm`` variants directly to use Claude for concern analysis.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
 
 from arcade_agent.models.architecture import Architecture
 from arcade_agent.models.graph import DependencyGraph
+
+log = logging.getLogger(__name__)
 
 
 def detect_concern_overload(
@@ -127,3 +139,191 @@ def detect_link_overload(
             })
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# LLM-based concern detection
+# ---------------------------------------------------------------------------
+
+_SYSTEM_PROMPT = (
+    "You are a software architecture expert specializing in architectural "
+    "smell detection. You analyze component structures and dependencies to "
+    "identify concern overload and scattered parasitic functionality."
+)
+
+
+def _build_component_summary(
+    architecture: Architecture,
+    dep_graph: DependencyGraph,
+    max_entities_per_component: int = 30,
+) -> list[dict]:
+    """Build a concise component summary suitable for an LLM prompt.
+
+    Args:
+        architecture: The recovered architecture.
+        dep_graph: The dependency graph.
+        max_entities_per_component: Cap entity names sent per component.
+
+    Returns:
+        List of component summary dicts.
+    """
+    comp_summary = []
+    for comp in architecture.components:
+        comp_deps = sorted({
+            tgt for src, tgt in architecture.component_dependencies(dep_graph)
+            if src == comp.name
+        })
+        # Collect entity simple names for the LLM (more readable than FQNs)
+        entity_names = []
+        for fqn in comp.entities[:max_entities_per_component]:
+            entity = dep_graph.entities.get(fqn)
+            if entity:
+                entity_names.append(entity.name)
+            else:
+                entity_names.append(fqn.rsplit(".", 1)[-1])
+
+        comp_summary.append({
+            "name": comp.name,
+            "responsibility": comp.responsibility,
+            "num_entities": len(comp.entities),
+            "entities": entity_names,
+            "depends_on": comp_deps,
+        })
+    return comp_summary
+
+
+def detect_concerns_llm(
+    architecture: Architecture,
+    dep_graph: DependencyGraph,
+) -> list[dict]:
+    """Use Claude to detect concern overload and scattered functionality.
+
+    Sends a structured summary of the architecture to Claude and asks it to
+    identify components with too many mixed responsibilities (BCO) and
+    concerns scattered across multiple components (SPF).
+
+    Args:
+        architecture: The recovered architecture.
+        dep_graph: The dependency graph.
+
+    Returns:
+        List of smell dicts with keys: smell_type, severity,
+        affected_components, description, explanation, suggestion.
+    """
+    from arcade_agent.llm import ask_claude_json, MOCK_MODE
+
+    if MOCK_MODE:
+        log.info("Mock mode — skipping LLM concern detection")
+        return []
+
+    comp_summary = _build_component_summary(architecture, dep_graph)
+
+    prompt = f"""Analyze this software architecture for architectural smells.
+
+## Architecture Components
+{json.dumps(comp_summary, indent=2)}
+
+Look for these specific smell types:
+
+1. **Concern Overload** (BCO): A component has too many responsibilities or
+   contains entities that serve unrelated purposes.  Signs: large entity count,
+   vague responsibility, entities with diverse naming patterns suggesting
+   multiple concerns mixed together.
+
+2. **Scattered Parasitic Functionality** (SPF): A single concern (e.g.,
+   logging, security, validation, persistence, configuration) is spread across
+   many unrelated components instead of being centralized.  Signs: similar
+   entity names, suffixes, or functional patterns appearing across multiple
+   components.
+
+Respond with ONLY valid JSON:
+{{
+    "smells": [
+        {{
+            "smell_type": "Concern Overload" or "Scattered Parasitic Functionality",
+            "severity": "high" or "medium" or "low",
+            "affected_components": ["ComponentA", "ComponentB"],
+            "description": "What the smell is",
+            "explanation": "Why this is a problem for maintainability and evolution",
+            "suggestion": "Concrete refactoring action to fix it"
+        }}
+    ]
+}}
+
+If no smells are found, return {{"smells": []}}.
+Be conservative — only report clear, actionable smells, not speculative ones."""
+
+    result = ask_claude_json(prompt, system=_SYSTEM_PROMPT)
+
+    smells: list[dict] = []
+    for s in result.get("smells", []):
+        # Validate that affected_components actually exist
+        valid_names = {c.name for c in architecture.components}
+        affected = [c for c in s.get("affected_components", []) if c in valid_names]
+        if not affected:
+            continue
+
+        smells.append({
+            "smell_type": s.get("smell_type", "Concern Overload"),
+            "severity": s.get("severity", "medium"),
+            "affected_components": affected,
+            "description": s.get("description", ""),
+            "explanation": s.get("explanation", ""),
+            "suggestion": s.get("suggestion", ""),
+        })
+    return smells
+
+
+def extract_concerns_llm(
+    architecture: Architecture,
+    dep_graph: DependencyGraph,
+) -> dict[str, list[str]]:
+    """Use Claude to identify the concerns handled by each component.
+
+    Args:
+        architecture: The recovered architecture.
+        dep_graph: The dependency graph.
+
+    Returns:
+        Dict mapping component name to a list of concern labels
+        (e.g. ``{"Clustering": ["agglomerative clustering", "similarity measures"]}``).
+    """
+    from arcade_agent.llm import ask_claude_json, MOCK_MODE
+
+    if MOCK_MODE:
+        log.info("Mock mode — skipping LLM concern extraction")
+        return {}
+
+    comp_summary = _build_component_summary(architecture, dep_graph)
+
+    prompt = f"""Analyze this software architecture and identify the concerns
+(responsibilities / topics) that each component handles.
+
+## Architecture Components
+{json.dumps(comp_summary, indent=2)}
+
+For each component, list 1-5 short concern labels that describe what
+functional or cross-cutting concerns it addresses.  Be specific and concise
+(2-4 words per concern).
+
+Respond with ONLY valid JSON:
+{{
+    "concerns": {{
+        "ComponentName": ["concern 1", "concern 2"],
+        "AnotherComponent": ["concern A"]
+    }}
+}}"""
+
+    system = (
+        "You are a software architecture expert. Identify the distinct "
+        "functional and cross-cutting concerns each component addresses."
+    )
+
+    result = ask_claude_json(prompt, system=system)
+
+    valid_names = {c.name for c in architecture.components}
+    concerns: dict[str, list[str]] = {}
+    for name, labels in result.get("concerns", {}).items():
+        if name in valid_names and isinstance(labels, list):
+            concerns[name] = [str(l) for l in labels[:5]]
+    return concerns

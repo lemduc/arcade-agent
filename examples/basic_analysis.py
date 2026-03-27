@@ -3,6 +3,7 @@
 
 Usage:
     python examples/basic_analysis.py /path/to/project [--language java] [--algorithm pkg]
+    python examples/basic_analysis.py /path/to/project --use-llm  # LLM-powered concern analysis
 
 Example with ARCADE Core (https://github.com/usc-softarch/arcade_core):
     git clone https://github.com/usc-softarch/arcade_core.git
@@ -34,6 +35,7 @@ def main():
     parser.add_argument("--algorithm", "-a", default="pkg", help="Recovery algorithm (pkg, wca, acdc)")
     parser.add_argument("--output", "-o", default="report.html", help="Output file")
     parser.add_argument("--num-clusters", "-n", type=int, default=None, help="Target clusters (WCA)")
+    parser.add_argument("--use-llm", action="store_true", help="Use Claude CLI for concern analysis")
     args = parser.parse_args()
 
     # 1. Ingest
@@ -63,11 +65,20 @@ def main():
         print(f"    - {comp.name}: {len(comp.entities)} entities")
 
     # 4. Detect smells
-    print(f"[4/6] Detecting architectural smells...")
-    smells = detect_smells(arch, graph)
+    print(f"[4/6] Detecting architectural smells{' (LLM)' if args.use_llm else ''}...")
+    smells = detect_smells(arch, graph, use_llm=args.use_llm)
     print(f"  {len(smells)} smells detected")
     for smell in smells:
         print(f"    - [{smell.severity}] {smell.smell_type}: {smell.description[:80]}")
+
+    # 4b. Extract concerns (LLM only)
+    concerns = None
+    if args.use_llm:
+        print(f"  Extracting component concerns...")
+        from arcade_agent.algorithms.concern import extract_concerns_llm
+        concerns = extract_concerns_llm(arch, graph)
+        for comp_name, labels in concerns.items():
+            print(f"    - {comp_name}: {', '.join(labels)}")
 
     # 5. Compute metrics
     print(f"[5/6] Computing quality metrics...")
@@ -80,6 +91,7 @@ def main():
     output = visualize(
         repo.name, repo.version, graph, arch, smells, metrics,
         output=args.output,
+        concerns=concerns,
     )
     print(f"  Report written to: {output}")
 

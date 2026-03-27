@@ -10,10 +10,26 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6; color: #1a1a2e; background: #f8f9fa;
-            max-width: 1200px; margin: 0 auto; padding: 2rem;
+            max-width: 1200px; margin: 0 auto; padding: 2rem; padding-top: 4rem;
         }
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: #1e293b; padding: 0.6rem 2rem;
+            display: flex; align-items: center; gap: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        nav .nav-title {
+            font-weight: 700; color: #f8fafc; font-size: 0.85rem;
+            white-space: nowrap; margin-right: 0.5rem;
+        }
+        nav a {
+            color: #94a3b8; text-decoration: none; font-size: 0.8rem;
+            padding: 0.3rem 0.7rem; border-radius: 4px; transition: all 0.15s;
+            white-space: nowrap;
+        }
+        nav a:hover { color: #f8fafc; background: #334155; }
         h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
-        h2 { font-size: 1.3rem; margin: 2rem 0 1rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; }
+        h2 { font-size: 1.3rem; margin: 2rem 0 1rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; scroll-margin-top: 3.5rem; }
         h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; }
         .subtitle { color: #666; margin-bottom: 2rem; }
         .stats {
@@ -60,11 +76,26 @@
         }
         .metric-card .value { font-size: 1.4rem; font-weight: 700; color: #059669; }
         .metric-card .name { font-size: 0.8rem; color: #666; }
+        .concern-tag {
+            display: inline-block; background: #e0e7ff; color: #3730a3;
+            font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 99px;
+            margin: 0.15rem; font-weight: 500;
+        }
         footer { margin-top: 3rem; text-align: center; color: #999; font-size: 0.8rem; }
     </style>
 </head>
 <body>
-    <h1>Architecture Report</h1>
+    <nav>
+        <span class="nav-title">arcade-agent</span>
+        <a href="#overview">Overview</a>
+        <a href="#metrics">Metrics</a>
+        <a href="#diagram">Diagram</a>
+        <a href="#components">Components</a>
+        <a href="#smells">Smells (7)</a>
+        <a href="#dependencies">Dependencies</a>
+    </nav>
+
+    <h1 id="overview">Architecture Report</h1>
     <p class="subtitle">arcade_core &mdash; version v1.2.0 &mdash; recovered with pkg</p>
 
     <div class="stats">
@@ -87,7 +118,7 @@
     </div>
 
     
-    <h2>Quality Metrics</h2>
+    <h2 id="metrics">Quality Metrics</h2>
     <div>
     
         <div class="metric-card">
@@ -123,7 +154,7 @@
     </div>
     
 
-    <h2>Architecture Diagram</h2>
+    <h2 id="diagram">Architecture Diagram</h2>
     <div class="card">
         <pre class="mermaid">
 graph TD
@@ -180,13 +211,14 @@ graph TD
     <div class="rationale">Package-based grouping (depth=2 after common prefix 'edu.usc.softarch').</div>
     
 
-    <h2>Components</h2>
+    <h2 id="components">Components</h2>
     <table>
         <thead>
             <tr>
                 <th>Component</th>
                 <th>Responsibility</th>
                 <th>#</th>
+                <th>Concerns</th>
                 <th>Entities</th>
             </tr>
         </thead>
@@ -196,6 +228,9 @@ graph TD
                 <td><strong>Default</strong></td>
                 <td>Entities in (default)</td>
                 <td>8</td>
+                
+                <td><span class="concern-tag">Graph structures</span><span class="concern-tag">MoJo calculation</span><span class="concern-tag">Configuration management</span></td>
+                
                 <td class="entity-list">BipartiteGraph, Cluster, Config, MergeInterfaceBasedSmell2Issues, MoJo, MoJoCalculator, StringUtil, Vertex</td>
             </tr>
         
@@ -203,6 +238,9 @@ graph TD
                 <td><strong>Antipattern</strong></td>
                 <td>Entities in arcade.antipattern</td>
                 <td>11</td>
+                
+                <td><span class="concern-tag">Smell detection</span><span class="concern-tag">Antipattern analysis</span><span class="concern-tag">Smell-issue correlation</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.antipattern.Smell, edu.usc.softarch.arcade.antipattern.SmellCollection, edu.usc.softarch.arcade.antipattern.detection.ArchSmellDetector, edu.usc.softarch.arcade.antipattern.detection.SmellToIssuesCorrelation, edu.usc.softarch.arcade.antipattern.detection.concern.ConcernOverload, edu.usc.softarch.arcade.antipattern.detection.concern.ScatteredParasiticFunctionality, edu.usc.softarch.arcade.antipattern.detection.coupling.CodeMaatHelper, edu.usc.softarch.arcade.antipattern.detection.dependency.DependencyCycle, ... (+3 more)</td>
             </tr>
         
@@ -210,6 +248,9 @@ graph TD
                 <td><strong>Clustering</strong></td>
                 <td>Entities in arcade.clustering</td>
                 <td>44</td>
+                
+                <td><span class="concern-tag">Architecture clustering</span><span class="concern-tag">Cluster algorithms</span><span class="concern-tag">Cluster matching</span><span class="concern-tag">Architecture recovery</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.clustering.ClusterMatcher, edu.usc.softarch.arcade.clustering.Clusterer, edu.usc.softarch.arcade.clustering.ClusteringAlgorithmType, edu.usc.softarch.arcade.clustering.Pkg, edu.usc.softarch.arcade.clustering.RsfToDot, edu.usc.softarch.arcade.clustering.acdc.ACDC, edu.usc.softarch.arcade.clustering.acdc.RSFOutput, edu.usc.softarch.arcade.clustering.acdc.TAInput, ... (+36 more)</td>
             </tr>
         
@@ -217,6 +258,9 @@ graph TD
                 <td><strong>Facts</strong></td>
                 <td>Entities in arcade.facts</td>
                 <td>33</td>
+                
+                <td><span class="concern-tag">Dependency extraction</span><span class="concern-tag">Version control analysis</span><span class="concern-tag">Change analysis</span><span class="concern-tag">Issue tracking integration</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.facts.Change, edu.usc.softarch.arcade.facts.ChangeAnalyzer, edu.usc.softarch.arcade.facts.Decision, edu.usc.softarch.arcade.facts.DependencyGraph, edu.usc.softarch.arcade.facts.VersionMap, edu.usc.softarch.arcade.facts.VersionTree, edu.usc.softarch.arcade.facts.dependencies.CSourceToDepsBuilder, edu.usc.softarch.arcade.facts.dependencies.JavaSourceToDepsBuilder, ... (+25 more)</td>
             </tr>
         
@@ -224,6 +268,9 @@ graph TD
                 <td><strong>Functiongraph</strong></td>
                 <td>Entities in arcade.functiongraph</td>
                 <td>3</td>
+                
+                <td><span class="concern-tag">Function dependency graphs</span><span class="concern-tag">Typed edge graphs</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.functiongraph.StringEdge, edu.usc.softarch.arcade.functiongraph.StringTypedEdge, edu.usc.softarch.arcade.functiongraph.TypedEdgeGraph</td>
             </tr>
         
@@ -231,6 +278,9 @@ graph TD
                 <td><strong>Jira</strong></td>
                 <td>Entities in arcade.jira</td>
                 <td>4</td>
+                
+                <td><span class="concern-tag">Issue tracking integration</span><span class="concern-tag">Jira API client</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.jira.IssuesAnalyzer, edu.usc.softarch.arcade.jira.JiraClientExample, edu.usc.softarch.arcade.jira.JiraClientPrototype, edu.usc.softarch.arcade.jira.JiraUtil</td>
             </tr>
         
@@ -238,6 +288,9 @@ graph TD
                 <td><strong>Metrics</strong></td>
                 <td>Entities in arcade.metrics</td>
                 <td>23</td>
+                
+                <td><span class="concern-tag">Architecture metrics</span><span class="concern-tag">Quality metrics</span><span class="concern-tag">Cluster metrics</span><span class="concern-tag">Metric evolution</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.metrics.DecayMetricAnalyzer, edu.usc.softarch.arcade.metrics.MoJoEvolutionAnalyzer, edu.usc.softarch.arcade.metrics.RenameFixer, edu.usc.softarch.arcade.metrics.data.A2aSystemData, edu.usc.softarch.arcade.metrics.data.ArchPair, edu.usc.softarch.arcade.metrics.data.ArchitectureMetrics, edu.usc.softarch.arcade.metrics.data.ClusterMetrics, edu.usc.softarch.arcade.metrics.data.CvgSystemData, ... (+15 more)</td>
             </tr>
         
@@ -245,6 +298,9 @@ graph TD
                 <td><strong>Topics</strong></td>
                 <td>Entities in arcade.topics</td>
                 <td>8</td>
+                
+                <td><span class="concern-tag">Topic modeling</span><span class="concern-tag">LDA analysis</span><span class="concern-tag">Concern extraction</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.topics.Concern, edu.usc.softarch.arcade.topics.DocTopicItem, edu.usc.softarch.arcade.topics.DocTopics, edu.usc.softarch.arcade.topics.MalletRunner, edu.usc.softarch.arcade.topics.TopicCompositionParser, edu.usc.softarch.arcade.topics.TopicItem, edu.usc.softarch.arcade.topics.exceptions.DistributionSizeMismatchException, edu.usc.softarch.arcade.topics.exceptions.UnmatchingDocTopicItemsException</td>
             </tr>
         
@@ -252,6 +308,9 @@ graph TD
                 <td><strong>Util</strong></td>
                 <td>Entities in arcade.util</td>
                 <td>9</td>
+                
+                <td><span class="concern-tag">General utilities</span><span class="concern-tag">File operations</span><span class="concern-tag">CLI interface</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.util.CLI, edu.usc.softarch.arcade.util.CentralTendency, edu.usc.softarch.arcade.util.DirCleaner, edu.usc.softarch.arcade.util.FileUtil, edu.usc.softarch.arcade.util.MapUtil, edu.usc.softarch.arcade.util.McfpDriver, edu.usc.softarch.arcade.util.Version, edu.usc.softarch.arcade.util.statistic.C2C2CSV, ... (+1 more)</td>
             </tr>
         
@@ -259,6 +318,9 @@ graph TD
                 <td><strong>Visualization</strong></td>
                 <td>Entities in arcade.visualization</td>
                 <td>15</td>
+                
+                <td><span class="concern-tag">GUI components</span><span class="concern-tag">Architecture visualization</span><span class="concern-tag">Interactive viewers</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.arcade.visualization.ArchitectureTableModel, edu.usc.softarch.arcade.visualization.MainFrame, edu.usc.softarch.arcade.visualization.clustering.ArchitectureViewer, edu.usc.softarch.arcade.visualization.clustering.ClustererController, edu.usc.softarch.arcade.visualization.clustering.ClustererInitializer, edu.usc.softarch.arcade.visualization.clustering.FeatureVectorTableModel, edu.usc.softarch.arcade.visualization.clustering.FeatureVectorViewer, edu.usc.softarch.arcade.visualization.components.DefaultButton, ... (+7 more)</td>
             </tr>
         
@@ -266,6 +328,9 @@ graph TD
                 <td><strong>Util2</strong></td>
                 <td>Entities in util</td>
                 <td>5</td>
+                
+                <td><span class="concern-tag">Enhanced collections</span><span class="concern-tag">Graph edges</span><span class="concern-tag">Terminal operations</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.util.EnhancedHashSet, edu.usc.softarch.util.EnhancedSet, edu.usc.softarch.util.EnhancedTreeSet, edu.usc.softarch.util.LabeledEdge, edu.usc.softarch.util.Terminal</td>
             </tr>
         
@@ -273,6 +338,9 @@ graph TD
                 <td><strong>Json</strong></td>
                 <td>Entities in util.json</td>
                 <td>3</td>
+                
+                <td><span class="concern-tag">JSON serialization</span><span class="concern-tag">JSON parsing</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.util.json.EnhancedJsonGenerator, edu.usc.softarch.util.json.EnhancedJsonParser, edu.usc.softarch.util.json.JsonSerializable</td>
             </tr>
         
@@ -280,13 +348,16 @@ graph TD
                 <td><strong>Matrix</strong></td>
                 <td>Entities in util.matrix</td>
                 <td>4</td>
+                
+                <td><span class="concern-tag">Matrix operations</span><span class="concern-tag">Cell computations</span></td>
+                
                 <td class="entity-list">edu.usc.softarch.util.matrix.Cell, edu.usc.softarch.util.matrix.CellValueCalculator, edu.usc.softarch.util.matrix.CellValueValidator, edu.usc.softarch.util.matrix.FastMatrix</td>
             </tr>
         
         </tbody>
     </table>
 
-    <h2>Architectural Smells (7)</h2>
+    <h2 id="smells">Architectural Smells (7)</h2>
     
     
     <div class="smell high">
@@ -305,32 +376,32 @@ graph TD
             <span class="badge high">high</span>
             <strong>SmellType.CONCERN_OVERLOAD</strong>
         </div>
-        <p class="smell-detail">Clustering contains 44 entities, suggesting multiple responsibilities.</p>
-        <p class="smell-detail"><strong>Why:</strong> Large components are harder to understand, test, and maintain. They often indicate that multiple concerns have been mixed together.</p>
-        <p class="smell-detail"><strong>Fix:</strong> Consider splitting Clustering into smaller, focused components with single responsibilities.</p>
+        <p class="smell-detail">The Default component mixes unrelated responsibilities: graph structures (BipartiteGraph, Vertex), clustering metrics (MoJo, MoJoCalculator), configuration (Config), smell analysis (MergeInterfaceBasedSmell2Issues), and utilities (StringUtil, Cluster).</p>
+        <p class="smell-detail"><strong>Why:</strong> Having entities in a default/unnamed package indicates poor organization. This component lacks conceptual cohesion—developers must understand disparate concepts (graph theory, metrics, smell detection) to work with it. Changes to any one concern risk breaking unrelated functionality. The vague responsibility 'Entities in (default)' confirms no clear architectural purpose.</p>
+        <p class="smell-detail"><strong>Fix:</strong> Dissolve this component. Move MoJo* classes to Metrics, BipartiteGraph/Vertex to a dedicated graph package or Functiongraph, Config to a configuration package, MergeInterfaceBasedSmell2Issues to Antipattern, and StringUtil to Util. Eliminate the default package entirely.</p>
+        <p class="smell-detail"><strong>Affects:</strong> Default</p>
+    </div>
+    
+    <div class="smell high">
+        <div class="smell-header">
+            <span class="badge high">high</span>
+            <strong>SmellType.CONCERN_OVERLOAD</strong>
+        </div>
+        <p class="smell-detail">The Clustering component contains 44 entities spanning multiple sub-concerns: clustering algorithms (ACDC, ClusterMatcher), file I/O (RSFOutput, TAInput, RsfToDot), serialization/stopping criteria (8 criterion classes), architecture representations (Architecture, ReadOnlyArchitecture), and graph utilities (Edge, Node, SubGraph).</p>
+        <p class="smell-detail"><strong>Why:</strong> This is the largest component in the system, violating the Single Responsibility Principle. Developers working on clustering algorithms must navigate I/O code and vice versa. Testing becomes difficult as test fixtures must cover diverse functionality. The component has 6 dependencies, suggesting it's doing too much. Evolution is risky—adding a new file format requires changes in a component primarily about clustering logic.</p>
+        <p class="smell-detail"><strong>Fix:</strong> Split into focused subcomponents: clustering.algorithms (ACDC, ClusterMatcher, pattern matching), clustering.io (RsfToDot, RSFOutput, TAInput), clustering.criteria (all Criterion classes), and clustering.models (Architecture, Cluster, FeatureVectors). Keep only core algorithm orchestration in the top-level Clustering component.</p>
         <p class="smell-detail"><strong>Affects:</strong> Clustering</p>
     </div>
     
-    <div class="smell medium">
+    <div class="smell high">
         <div class="smell-header">
-            <span class="badge medium">medium</span>
+            <span class="badge high">high</span>
             <strong>SmellType.CONCERN_OVERLOAD</strong>
         </div>
-        <p class="smell-detail">Facts contains 33 entities, suggesting multiple responsibilities.</p>
-        <p class="smell-detail"><strong>Why:</strong> Large components are harder to understand, test, and maintain. They often indicate that multiple concerns have been mixed together.</p>
-        <p class="smell-detail"><strong>Fix:</strong> Consider splitting Facts into smaller, focused components with single responsibilities.</p>
+        <p class="smell-detail">The Facts component contains 33 entities with fundamentally different purposes: source code parsers (CSourceToDepsBuilder, JavaSourceToDepsBuilder), file format readers (RsfReader, ODEMReader, MakeDepReader, UnderstandCsvToRsf), version control integration (Commit, VersionTree, GitLabRestHandler), issue tracking (JiraImporter, IssueRecord, IssueComment), and decision analysis (DecisionAnalyzer, DecisionRankingEngine).</p>
+        <p class="smell-detail"><strong>Why:</strong> This component conflates data acquisition (parsing, reading), external system integration (Git, Jira), and architectural analysis (decision ranking). Changes to Jira integration could break dependency parsing. The component depends on 6 other components (Antipattern, Clustering, Functiongraph, Json, Util, Util2), indicating it's a hub doing too much. New developers cannot understand 'Facts' without understanding 5+ distinct domains.</p>
+        <p class="smell-detail"><strong>Fix:</strong> Refactor into focused components: facts.parsers (all *ToDepsBuilder, *Reader classes), facts.vcs (Commit, VersionTree, Git* classes), facts.issues (Jira*, IssueRecord, IssueComment), facts.analysis (DecisionAnalyzer, ChangeAnalyzer, RecovArEngine), and facts.core (DependencyGraph, Change). Each subcomponent should have a single reason to change.</p>
         <p class="smell-detail"><strong>Affects:</strong> Facts</p>
-    </div>
-    
-    <div class="smell medium">
-        <div class="smell-header">
-            <span class="badge medium">medium</span>
-            <strong>SmellType.CONCERN_OVERLOAD</strong>
-        </div>
-        <p class="smell-detail">Metrics contains 23 entities, suggesting multiple responsibilities.</p>
-        <p class="smell-detail"><strong>Why:</strong> Large components are harder to understand, test, and maintain. They often indicate that multiple concerns have been mixed together.</p>
-        <p class="smell-detail"><strong>Fix:</strong> Consider splitting Metrics into smaller, focused components with single responsibilities.</p>
-        <p class="smell-detail"><strong>Affects:</strong> Metrics</p>
     </div>
     
     <div class="smell medium">
@@ -338,10 +409,10 @@ graph TD
             <span class="badge medium">medium</span>
             <strong>SmellType.SCATTERED_FUNCTIONALITY</strong>
         </div>
-        <p class="smell-detail">'Util' pattern is scattered across 3 components: Default, Jira, Util</p>
-        <p class="smell-detail"><strong>Why:</strong> When a single concern is spread across many components, changes to that concern require modifying multiple places, increasing the risk of inconsistencies and bugs.</p>
-        <p class="smell-detail"><strong>Fix:</strong> Centralize 'Util'-related functionality into a dedicated component to reduce scattering.</p>
-        <p class="smell-detail"><strong>Affects:</strong> Default, Jira, Util</p>
+        <p class="smell-detail">File I/O and format conversion functionality is scattered across multiple components: Facts contains 5 file readers (RsfReader, ODEMReader, MakeDepReader, OdemToRsf, UnderstandCsvToRsf), Clustering contains 3 I/O classes (RSFOutput, TAInput, RsfToDot), and Util contains FileUtil.</p>
+        <p class="smell-detail"><strong>Why:</strong> Developers adding support for a new file format must search multiple components to find relevant code. I/O error handling, encoding logic, and file validation are duplicated across components. Testing I/O functionality requires setting up test fixtures in 3 different test suites. This also violates the Open/Closed Principle—adding a format requires modifying components whose primary responsibility is clustering or dependency analysis.</p>
+        <p class="smell-detail"><strong>Fix:</strong> Create a dedicated facts.io or io component to centralize all file reading, writing, and format conversion. Provide a common abstraction (e.g., DependencyGraphReader interface) with implementations for each format (RsfReader, OdemReader, CsvReader). Move RSFOutput, RsfToDot, and FileUtil to this component. Clustering and Facts should depend on this I/O component, not implement I/O themselves.</p>
+        <p class="smell-detail"><strong>Affects:</strong> Facts, Clustering, Util</p>
     </div>
     
     <div class="smell medium">
@@ -368,7 +439,7 @@ graph TD
     
     
 
-    <h2>Dependency Summary</h2>
+    <h2 id="dependencies">Dependency Summary</h2>
     <div class="card">
         <table>
             <thead><tr><th>Package</th><th>Entities</th></tr></thead>

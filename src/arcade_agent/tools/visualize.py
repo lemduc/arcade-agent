@@ -27,6 +27,7 @@ def visualize(
     metrics: list[MetricResult] | None = None,
     output: str = "report.html",
     format: str | None = None,
+    concerns: dict[str, list[str]] | None = None,
 ) -> str:
     """Generate a visualization of the architecture analysis.
 
@@ -39,6 +40,7 @@ def visualize(
         metrics: Computed quality metrics.
         output: Output file path.
         format: Output format (html, dot, json, rsf, mermaid). Auto-detected from extension.
+        concerns: Optional dict mapping component name to concern labels (LLM-extracted).
 
     Returns:
         Path to the generated output file (or content string for mermaid).
@@ -56,7 +58,7 @@ def visualize(
         format = ext_map.get(output_path.suffix, "html")
 
     if format == "html":
-        export_html(repo_name, version, dep_graph, architecture, smells, metrics, output_path)
+        export_html(repo_name, version, dep_graph, architecture, smells, metrics, output_path, concerns=concerns)
     elif format == "dot":
         content = export_dot(architecture, dep_graph)
         output_path.write_text(content)

@@ -24,10 +24,26 @@ REPORT_TEMPLATE = Template("""\
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6; color: #1a1a2e; background: #f8f9fa;
-            max-width: 1200px; margin: 0 auto; padding: 2rem;
+            max-width: 1200px; margin: 0 auto; padding: 2rem; padding-top: 4rem;
         }
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: #1e293b; padding: 0.6rem 2rem;
+            display: flex; align-items: center; gap: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        nav .nav-title {
+            font-weight: 700; color: #f8fafc; font-size: 0.85rem;
+            white-space: nowrap; margin-right: 0.5rem;
+        }
+        nav a {
+            color: #94a3b8; text-decoration: none; font-size: 0.8rem;
+            padding: 0.3rem 0.7rem; border-radius: 4px; transition: all 0.15s;
+            white-space: nowrap;
+        }
+        nav a:hover { color: #f8fafc; background: #334155; }
         h1 { font-size: 1.8rem; margin-bottom: 0.25rem; }
-        h2 { font-size: 1.3rem; margin: 2rem 0 1rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; }
+        h2 { font-size: 1.3rem; margin: 2rem 0 1rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; scroll-margin-top: 3.5rem; }
         h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; }
         .subtitle { color: #666; margin-bottom: 2rem; }
         .stats {
@@ -74,11 +90,26 @@ REPORT_TEMPLATE = Template("""\
         }
         .metric-card .value { font-size: 1.4rem; font-weight: 700; color: #059669; }
         .metric-card .name { font-size: 0.8rem; color: #666; }
+        .concern-tag {
+            display: inline-block; background: #e0e7ff; color: #3730a3;
+            font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 99px;
+            margin: 0.15rem; font-weight: 500;
+        }
         footer { margin-top: 3rem; text-align: center; color: #999; font-size: 0.8rem; }
     </style>
 </head>
 <body>
-    <h1>Architecture Report</h1>
+    <nav>
+        <span class="nav-title">arcade-agent</span>
+        <a href="#overview">Overview</a>
+        {% if metrics %}<a href="#metrics">Metrics</a>{% endif %}
+        <a href="#diagram">Diagram</a>
+        <a href="#components">Components</a>
+        <a href="#smells">Smells ({{ num_smells }})</a>
+        <a href="#dependencies">Dependencies</a>
+    </nav>
+
+    <h1 id="overview">Architecture Report</h1>
     <p class="subtitle">{{ repo_name }} &mdash; version {{ version }} &mdash; recovered with {{ algorithm }}</p>
 
     <div class="stats">
@@ -101,7 +132,7 @@ REPORT_TEMPLATE = Template("""\
     </div>
 
     {% if metrics %}
-    <h2>Quality Metrics</h2>
+    <h2 id="metrics">Quality Metrics</h2>
     <div>
     {% for metric in metrics %}
         <div class="metric-card">
@@ -112,7 +143,7 @@ REPORT_TEMPLATE = Template("""\
     </div>
     {% endif %}
 
-    <h2>Architecture Diagram</h2>
+    <h2 id="diagram">Architecture Diagram</h2>
     <div class="card">
         <pre class="mermaid">
 {{ mermaid_diagram }}
@@ -123,13 +154,14 @@ REPORT_TEMPLATE = Template("""\
     <div class="rationale">{{ rationale }}</div>
     {% endif %}
 
-    <h2>Components</h2>
+    <h2 id="components">Components</h2>
     <table>
         <thead>
             <tr>
                 <th>Component</th>
                 <th>Responsibility</th>
                 <th>#</th>
+                {% if concerns %}<th>Concerns</th>{% endif %}
                 <th>Entities</th>
             </tr>
         </thead>
@@ -139,13 +171,16 @@ REPORT_TEMPLATE = Template("""\
                 <td><strong>{{ comp.name }}</strong></td>
                 <td>{{ comp.responsibility }}</td>
                 <td>{{ comp.entities | length }}</td>
+                {% if concerns %}
+                <td>{% for c in concerns.get(comp.name, []) %}<span class="concern-tag">{{ c }}</span>{% endfor %}</td>
+                {% endif %}
                 <td class="entity-list">{{ comp.entities[:8] | join(', ') }}{% if comp.entities | length > 8 %}, ... (+{{ comp.entities | length - 8 }} more){% endif %}</td>
             </tr>
         {% endfor %}
         </tbody>
     </table>
 
-    <h2>Architectural Smells ({{ num_smells }})</h2>
+    <h2 id="smells">Architectural Smells ({{ num_smells }})</h2>
     {% if smells %}
     {% for smell in smells %}
     <div class="smell {{ smell.severity }}">
@@ -165,7 +200,7 @@ REPORT_TEMPLATE = Template("""\
     </div>
     {% endif %}
 
-    <h2>Dependency Summary</h2>
+    <h2 id="dependencies">Dependency Summary</h2>
     <div class="card">
         <table>
             <thead><tr><th>Package</th><th>Entities</th></tr></thead>
@@ -198,6 +233,7 @@ def export_html(
     smells: list[SmellInstance],
     metrics: list[MetricResult],
     output_path: Path,
+    concerns: dict[str, list[str]] | None = None,
 ) -> Path:
     """Generate an HTML architecture report.
 
@@ -209,6 +245,7 @@ def export_html(
         smells: Detected architectural smells.
         metrics: Computed quality metrics.
         output_path: Where to write the HTML file.
+        concerns: Optional dict mapping component name to concern labels.
 
     Returns:
         Path to the generated HTML file.
@@ -230,6 +267,7 @@ def export_html(
         smells=smells,
         metrics=metrics,
         packages=packages,
+        concerns=concerns or {},
     )
 
     output_path.write_text(html)
