@@ -30,6 +30,16 @@ def _delta(new: float, old: float) -> str:
     return f"{arrow} ({diff:+.4f})"
 
 
+def _delta_with_color(new: float, old: float) -> str:
+    """Format delta with color cues for PR markdown tables."""
+    diff = new - old
+    if abs(diff) < 0.0001:
+        return "⚪ **→ (no change)**"
+    if diff > 0:
+        return f"🟢 **↑ ({diff:+.4f})**"
+    return f"🔴 **↓ ({diff:+.4f})**"
+
+
 def _severity_icon(severity: str) -> str:
     return {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(severity.lower(), "⚪")
 
@@ -94,6 +104,48 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
         "automatic architectural self-analysis_\n"
     )
     lines.append("---\n")
+
+    # -- Metric evolution quick view (top) -------------------------------------
+    if baseline:
+        bl_metrics = baseline.get("metrics", {})
+        bl_rci = bl_metrics.get("RCI", 0.0)
+        bl_tmq = bl_metrics.get("TurboMQ", 0.0)
+        bl_commit = baseline.get("commit_sha", "unknown")[:7]
+
+        lines.append("### 📈 Metric Evolution\n")
+        lines.append(f"_Baseline commit: `{bl_commit}`_\n")
+        lines.append("_Legend: 🟢 increase · 🔴 decrease · ⚪ no change_\n")
+        lines.append("| Metric | Baseline | Current | Change |")
+        lines.append("|--------|----------|---------|--------|")
+        lines.append(
+            f"| 📦 Components | {baseline.get('num_components')} "
+            f"| {current.get('num_components')} "
+            f"| {_delta_with_color(current.get('num_components', 0), baseline.get('num_components', 0))} |"
+        )
+        lines.append(
+            f"| 🧩 Entities | {baseline.get('num_entities')} "
+            f"| {current.get('num_entities')} "
+            f"| {_delta_with_color(current.get('num_entities', 0), baseline.get('num_entities', 0))} |"
+        )
+        lines.append(
+            f"| 🔗 Edges | {baseline.get('num_edges')} "
+            f"| {current.get('num_edges')} "
+            f"| {_delta_with_color(current.get('num_edges', 0), baseline.get('num_edges', 0))} |"
+        )
+        lines.append(
+            f"| RCI | {bl_rci:.4f} | {cur_rci:.4f} | {_delta_with_color(cur_rci, bl_rci)} |"
+        )
+        lines.append(
+            f"| TurboMQ | {bl_tmq:.4f} | {cur_tmq:.4f} | {_delta_with_color(cur_tmq, bl_tmq)} |"
+        )
+        for name in bl_metrics:
+            if name not in ("RCI", "TurboMQ"):
+                bl_v = bl_metrics.get(name, 0.0)
+                cur_v = cur_metrics.get(name, 0.0)
+                lines.append(
+                    f"| {name} | {bl_v:.4f} | {cur_v:.4f} | {_delta_with_color(cur_v, bl_v)} |"
+                )
+        lines.append("")
 
     # -- Current state -----------------------------------------------------------
     lines.append("### 🏛️ Current Architecture\n")
@@ -191,38 +243,6 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
                     ))
                     lines.append("")
                 lines.append("</details>\n")
-
-        # Metric evolution table
-        lines.append("#### Metric Evolution\n")
-        lines.append("| Metric | Baseline | Current | Change |")
-        lines.append("|--------|----------|---------|--------|")
-        lines.append(
-            f"| 📦 Components | {baseline.get('num_components')} "
-            f"| {current.get('num_components')} "
-            f"| {_delta(current.get('num_components', 0), baseline.get('num_components', 0))} |"
-        )
-        lines.append(
-            f"| 🧩 Entities | {baseline.get('num_entities')} "
-            f"| {current.get('num_entities')} "
-            f"| {_delta(current.get('num_entities', 0), baseline.get('num_entities', 0))} |"
-        )
-        lines.append(
-            f"| 🔗 Edges | {baseline.get('num_edges')} "
-            f"| {current.get('num_edges')} "
-            f"| {_delta(current.get('num_edges', 0), baseline.get('num_edges', 0))} |"
-        )
-        lines.append(
-            f"| RCI | {bl_rci:.4f} | {cur_rci:.4f} | {_delta(cur_rci, bl_rci)} |"
-        )
-        lines.append(
-            f"| TurboMQ | {bl_tmq:.4f} | {cur_tmq:.4f} | {_delta(cur_tmq, bl_tmq)} |"
-        )
-        for name in bl_metrics:
-            if name not in ("RCI", "TurboMQ"):
-                bl_v = bl_metrics.get(name, 0.0)
-                cur_v = cur_metrics.get(name, 0.0)
-                lines.append(f"| {name} | {bl_v:.4f} | {cur_v:.4f} | {_delta(cur_v, bl_v)} |")
-        lines.append("")
 
         # Smell changes
         cur_smell_types = {s.get("smell_type") for s in cur_smells}
