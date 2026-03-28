@@ -94,42 +94,48 @@ python examples/basic_analysis.py arcade_core --language java --use-llm
 
 This replaces heuristic smell detection (entity count thresholds, suffix matching) with semantic analysis that identifies *what* concerns each component handles and *why* they are problematic. Set `ARCADE_MOCK=1` to skip LLM calls, or `ARCADE_MODEL=haiku` to use a faster model.
 
-## Reusable GitHub Workflow
+## CI/CD Integration
 
-This repository exposes a reusable GitHub Actions workflow at `.github/workflows/architecture-analysis-reusable.yml` so other repositories can integrate architecture evaluation with one job.
+arcade-agent ships with a GitHub Action that detects architecture drift on every PR — like SonarQube for architecture.
 
-Current implementation uses **PA1 (dual checkout)**:
+### How It Works
 
-- Checkout target repository source code for analysis.
-- Checkout the tooling repository (this repo by default) to access `scripts/run_self_analysis.py`, `scripts/compare_baseline.py`, and related helpers.
+1. On **pull request**: parses the codebase, recovers architecture (PKG), compares against a stored baseline, and posts a PR comment with a drift report.
+2. On **push to main**: updates the baseline (`.arcade/baseline.json`) so future PRs compare against the latest merged state.
 
-Minimal caller workflow:
+### Setup
+
+Copy `.github/workflows/arch-drift.yml` into your repository. The workflow auto-detects the language, or you can set it explicitly via the `language` workflow input.
 
 ```yaml
-name: Architecture Analysis
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-jobs:
-  architecture:
-    uses: lemduc/arcade-agent/.github/workflows/architecture-analysis-reusable.yml@<release-tag-or-commit-sha>
-    with:
-      source-path: .
-      primary-algorithm: pkg
-      baseline-workflow-id: ci.yml
-      tooling-repository: lemduc/arcade-agent
-      tooling-ref: <release-tag-or-commit-sha>
-    secrets: inherit
+# .github/workflows/arch-drift.yml is included in the repo — just enable Actions.
 ```
 
-Notes:
+The baseline is stored in `.arcade/baseline.json` and committed to the repo automatically when changes are pushed to `main`.
 
-- `baseline-workflow-id` should match the caller workflow filename where baseline artifacts are produced.
-- Prefer pinning to a release tag or commit SHA instead of `@main`.
-- The reusable workflow already handles PR comment updates, artifact upload, and baseline refresh on `main` pushes.
+### Local Usage
+
+Run the drift detection script locally:
+
+```bash
+# Analyze without a baseline (first run)
+python scripts/arch_diff.py --source /path/to/project --language java
+
+# Update the baseline
+python scripts/arch_diff.py --source /path/to/project --language java --update-baseline
+
+# Compare against existing baseline
+python scripts/arch_diff.py --source /path/to/project --language java
+```
+
+### PR Comment Format
+
+The action posts a comment with:
+- **Drift table** — component count, similarity score, RCI, TurboMQ deltas
+- **Changes** — added/removed components, entity movements, splits/merges
+- **Smells** — dependency cycles, concern overload, scattered functionality
+
+The comment is updated on each push to the PR (not duplicated).
 
 ## Roadmap
 

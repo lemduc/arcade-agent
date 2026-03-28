@@ -1,0 +1,83 @@
+name: Architecture Drift Detection
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      language:
+        description: "Language to parse (blank for auto-detect)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  # On PR: analyze architecture and post comment
+  analyze:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install arcade-agent
+        run: pip install -e .
+
+      - name: Run architecture drift detection
+        id: drift
+        run: |
+          LANG_ARG=""
+          if [ -n "${{ github.event.inputs.language }}" ]; then
+            LANG_ARG="--language ${{ github.event.inputs.language }}"
+          fi
+          python scripts/arch_diff.py --source . $LANG_ARG > drift-report.md 2>&1 || true
+          echo "report<<ARCADE_EOF" >> "$GITHUB_OUTPUT"
+          cat drift-report.md >> "$GITHUB_OUTPUT"
+          echo "ARCADE_EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Post or update PR comment
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: ${{ steps.drift.outputs.report }}
+          comment-tag: arcade-agent-drift-report
+
+  # On push to main: update baseline
+  update-baseline:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install arcade-agent
+        run: pip install -e .
+
+      - name: Update baseline
+        run: |
+          LANG_ARG=""
+          if [ -n "${{ github.event.inputs.language }}" ]; then
+            LANG_ARG="--language ${{ github.event.inputs.language }}"
+          fi
+          python scripts/arch_diff.py --source . $LANG_ARG --update-baseline > /dev/null
+
+      - name: Commit baseline if changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update architecture baseline"
+          file_pattern: ".arcade/baseline.json"
