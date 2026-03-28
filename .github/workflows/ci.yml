@@ -52,8 +52,7 @@ jobs:
       - name: Run self-analysis
         run: |
           python scripts/run_self_analysis.py \
-            --algorithm wca \
-            --num-clusters 4 \
+            --algorithm acdc \
             --output-json arcade_analysis_results.json \
             --output-html arcade_analysis_report.html
 
