@@ -175,6 +175,16 @@ def _extract_referenced_names(node) -> set[str]:
     return names
 
 
+def _should_skip_module_entity(py_file: Path, declarations: list[dict]) -> bool:
+    """Ignore package marker modules that do not declare any symbols.
+
+    Many Python ``__init__.py`` files only serve packaging or re-export duties.
+    Treating them as architectural entities adds singleton components and noisy
+    edges without representing a meaningful implementation unit.
+    """
+    return py_file.name == "__init__.py" and not declarations
+
+
 @register_parser
 class PythonParser(LanguageParser):
     """Python source code parser using tree-sitter."""
@@ -222,6 +232,9 @@ class PythonParser(LanguageParser):
             functions = _extract_functions(root_node)
 
             all_decls = classes + functions
+
+            if _should_skip_module_entity(py_file, all_decls):
+                continue
 
             if not all_decls:
                 # Register the module itself as an entity

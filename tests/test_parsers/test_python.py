@@ -30,3 +30,17 @@ def test_python_parser_properties():
     parser = PythonParser()
     assert parser.language == "python"
     assert ".py" in parser.file_extensions
+
+
+def test_python_parser_skips_empty_init_modules(tmp_path):
+    package_dir = tmp_path / "pkg"
+    package_dir.mkdir()
+    (package_dir / "__init__.py").write_text('"""package marker"""\n')
+    module_path = package_dir / "service.py"
+    module_path.write_text("def run():\n    return 1\n")
+
+    parser = PythonParser()
+    graph = parser.parse([package_dir / "__init__.py", module_path], tmp_path)
+
+    assert "pkg" not in graph.entities
+    assert "pkg.service.run" in graph.entities
