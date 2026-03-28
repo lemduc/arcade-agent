@@ -27,7 +27,6 @@ def _delta(new: float, old: float) -> str:
     arrow = "↑" if diff > 0 else "↓"
     return f"{arrow} ({diff:+.4f})"
 
-
 def _delta_with_impact(metric_name: str, new: float, old: float) -> str:
     """Format delta using metric quality semantics, not raw direction."""
     diff = new - old
@@ -49,6 +48,8 @@ def _delta_with_impact(metric_name: str, new: float, old: float) -> str:
         icon = "🟡"
 
     return f"{icon} **{arrow} ({diff:+.4f})**"
+
+
 def _severity_icon(severity: str) -> str:
     return {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(severity.lower(), "⚪")
 
@@ -162,6 +163,7 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
                     f"| {_delta_with_impact(name, cur_v, bl_v)} |"
                 )
         lines.append("")
+
     # -- Current state -----------------------------------------------------------
     lines.append("### 🏛️ Current Architecture\n")
     lines.append("| Metric | Value |")
@@ -198,51 +200,16 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
             si = _severity_icon(s.get("severity", ""))
             stype = s.get("smell_type", "Unknown")
             comps = ", ".join(s.get("affected_components", []))
-            lines.append(f"| {si} {s.get('severity','?')} | {stype} | {comps} |")
-    else:
-        lines.append("✅ No architectural smells detected.")
-    lines.append("")
-
-    # -- Evolution (before/after) ------------------------------------------------
-    if baseline:
-        bl_metrics = baseline.get("metrics", {})
-        bl_rci = bl_metrics.get("RCI", 0.0)
-        bl_tmq = bl_metrics.get("TurboMQ", 0.0)
-        bl_smells = baseline.get("smells", [])
-        bl_commit = baseline.get("commit_sha", "unknown")[:7]
-
-        # Run A2A comparison via arcade-agent's compare tool
-        a2a_result = _run_a2a_comparison(baseline, current)
-
-        lines.append("### 📈 Evolution vs Baseline\n")
-        lines.append(f"_Baseline commit: `{bl_commit}`_\n")
-
-        # A2A similarity section
-        if a2a_result:
-            summary = a2a_result["summary"]
-            lines.append("#### Architecture-to-Architecture (A2A) Comparison\n")
-            lines.append("| Metric | Value |")
-            lines.append("|--------|-------|")
-            lines.append(f"| A2A Similarity | **{a2a_result['overall_similarity']:.4f}** |")
-            lines.append(f"| Matched Components | {summary['total_matches']} |")
-            lines.append(f"| Components Added | {summary['components_added']} |")
-            lines.append(f"| Components Removed | {summary['components_removed']} |")
             if summary.get("possible_splits"):
                 lines.append(f"| Possible Splits | {summary['possible_splits']} |")
             if summary.get("possible_merges"):
                 lines.append(f"| Possible Merges | {summary['possible_merges']} |")
             lines.append("")
-
             # Component-level matches detail
             matches = a2a_result.get("matches", [])
             matched = [m for m in matches if m.get("source") and m.get("target")]
             added = [m for m in matches if not m.get("source")]
-            removed = [m for m in matches if not m.get("target")]
 
-            if matched or added or removed:
-                lines.append("<details><summary>Component matching details</summary>\n")
-                if matched:
-                    lines.append("**Matched:**")
                     lines.append("| Baseline | Current | Similarity |")
                     lines.append("|----------|---------|------------|")
                     for m in sorted(matched, key=lambda x: -x["similarity"]):
