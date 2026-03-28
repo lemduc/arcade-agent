@@ -77,9 +77,10 @@ def main() -> None:
     # Components
     print(f"│{'🏗️  COMPONENTS':^{width}}│")
     print(f"├{border}┤")
-    for comp in sorted(components, key=lambda c: -c["num_entities"]):
-        bar = "█" * min(comp["num_entities"] // 3, 20)
-        line = f"  {comp['name']:<22} {comp['num_entities']:>3} entities  {bar}"
+    for comp in sorted(components, key=lambda c: -(c.get("num_entities") or len(c.get("entities", [])))):
+        count = comp.get("num_entities") or len(comp.get("entities", []))
+        bar = "█" * min(count // 3, 20)
+        line = f"  {comp['name']:<22} {count:>3} entities  {bar}"
         print(f"│{line:<{width}}│")
     print(f"├{border}┤")
 
@@ -135,8 +136,9 @@ def _write_step_summary(
     lines.append("\n### 🏗️ Components\n")
     lines.append("| Component | Entities |")
     lines.append("|-----------|----------|")
-    for comp in sorted(components, key=lambda c: -c["num_entities"]):
-        lines.append(f"| {comp['name']} | {comp['num_entities']} |")
+    for comp in sorted(components, key=lambda c: -(c.get("num_entities") or len(c.get("entities", [])))):
+        count = comp.get("num_entities") or len(comp.get("entities", []))
+        lines.append(f"| {comp['name']} | {count} |")
 
     lines.append("\n### 🚨 Architectural Smells\n")
     if smells:

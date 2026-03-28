@@ -90,7 +90,7 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
 
     lines.append("## 🤖 Architecture Analysis Summary\n")
     lines.append(
-        "_Powered by [arcade-agent](https://github.com/lemduc/arcade-agent) — "
+        "_Powered by [arcade-agent](https://github.com/tuannx/arcade-agent) — "
         "automatic architectural self-analysis_\n"
     )
     lines.append("---\n")
@@ -114,8 +114,9 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
         lines.append("<details><summary>🏗️ Components breakdown</summary>\n")
         lines.append("| Component | Entities |")
         lines.append("|-----------|----------|")
-        for comp in sorted(cur_components, key=lambda c: -c["num_entities"]):
-            lines.append(f"| {comp['name']} | {comp['num_entities']} |")
+        for comp in sorted(cur_components, key=lambda c: -(c.get("num_entities") or len(c.get("entities", [])))):
+            count = comp.get("num_entities") or len(comp.get("entities", []))
+            lines.append(f"| {comp['name']} | {count} |")
         lines.append("</details>\n")
 
     # -- Smells ------------------------------------------------------------------
@@ -236,6 +237,7 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
             for t in resolved_smells:
                 lines.append(f"- ✅ Resolved: `{t}`")
             lines.append("")
+
     else:
         lines.append(
             "> ℹ️ No baseline available — this is the first analysis run or the "
@@ -378,6 +380,7 @@ def main() -> None:
         cur_smell_count = len(current.get("smells", []))
         bl_smell_count = len(baseline.get("smells", []))
         print(f"  Smells:      {bl_smell_count} → {cur_smell_count}")
+
     else:
         print("  No baseline available — first run or baseline expired.")
         cur_rci = current.get("metrics", {}).get("RCI", 0.0)
