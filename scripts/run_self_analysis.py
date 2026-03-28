@@ -72,8 +72,6 @@ def _filter_non_architectural_entities(graph: DependencyGraph) -> DependencyGrap
         edges=kept_edges,
         packages=kept_packages,
     )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="Self-analysis of arcade-agent codebase")
     parser.add_argument(

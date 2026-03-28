@@ -3,7 +3,6 @@
 
 Uses arcade-agent's compare tool (A2A analysis with Hungarian algorithm) for
 proper architecture-to-architecture comparison when entity data is available.
-
 Usage:
     python scripts/compare_baseline.py current.json baseline.json [--output comment.md]
 
@@ -20,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.tools.compare import compare
-
 
 def _delta(new: float, old: float) -> str:
     diff = new - old
@@ -51,8 +49,6 @@ def _delta_with_impact(metric_name: str, new: float, old: float) -> str:
         icon = "🟡"
 
     return f"{icon} **{arrow} ({diff:+.4f})**"
-
-
 def _severity_icon(severity: str) -> str:
     return {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(severity.lower(), "⚪")
 
@@ -96,8 +92,6 @@ def _run_a2a_comparison(baseline: dict, current: dict) -> dict | None:
     if arch_a is None or arch_b is None:
         return None
     return compare(arch_a, arch_b)
-
-
 def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> str:
     """Build a Markdown PR comment body."""
     lines: list[str] = []
@@ -168,7 +162,6 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
                     f"| {_delta_with_impact(name, cur_v, bl_v)} |"
                 )
         lines.append("")
-
     # -- Current state -----------------------------------------------------------
     lines.append("### 🏛️ Current Architecture\n")
     lines.append("| Metric | Value |")
@@ -318,7 +311,6 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
                     f"- **Architecture Stability**: 🔴 Low (A2A={sim:.4f}) "
                     "— significant restructuring detected"
                 )
-
     smell_count = len(cur_smells)
     if smell_count == 0:
         lines.append("- **Smells**: ✅ Clean — no architectural smells")
@@ -406,7 +398,6 @@ def main() -> None:
                 f"{current.get('num_components')} "
                 f"{_delta(current.get('num_components', 0), baseline.get('num_components', 0))}"
             )
-
         print(
             f"  Entities:    {baseline.get('num_entities')} → "
             f"{current.get('num_entities')} "
