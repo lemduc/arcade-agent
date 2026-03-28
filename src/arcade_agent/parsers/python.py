@@ -182,6 +182,8 @@ def _should_skip_module_entity(py_file: Path, declarations: list[dict]) -> bool:
     edges without representing a meaningful implementation unit.
     """
     return py_file.name == "__init__.py" and not declarations
+
+
 @register_parser
 class PythonParser(LanguageParser):
     """Python source code parser using tree-sitter."""
