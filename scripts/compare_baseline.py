@@ -162,7 +162,6 @@ def build_comment(current: dict, baseline: dict | None, run_url: str = "") -> st
                     f"| {_delta_with_impact(name, cur_v, bl_v)} |"
                 )
         lines.append("")
-
     # -- Current state -----------------------------------------------------------
     lines.append("### 🏛️ Current Architecture\n")
     lines.append("| Metric | Value |")
