@@ -4,7 +4,7 @@ RSF is a simple text format used by architecture recovery tools:
     contain ComponentName entityFQN
 """
 
-from arcade_agent.models.architecture import Architecture
+from arcade_agent.algorithms.architecture import Architecture
 
 
 def export_rsf(architecture: Architecture) -> str:

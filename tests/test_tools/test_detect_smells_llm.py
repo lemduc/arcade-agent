@@ -2,12 +2,12 @@
 
 from unittest.mock import patch
 
+from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.concern import (
     _build_component_summary,
     detect_concerns_llm,
 )
-from arcade_agent.models.architecture import Architecture, Component
-from arcade_agent.models.graph import DependencyGraph, Edge, Entity
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 from arcade_agent.tools.detect_smells import detect_smells
 
 
@@ -59,7 +59,7 @@ def test_build_component_summary():
 def test_detect_concerns_llm_mock_mode():
     """In mock mode, LLM detection returns empty list."""
     arch, graph = _make_large_arch()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         result = detect_concerns_llm(arch, graph)
     assert result == []
 
@@ -89,8 +89,8 @@ def test_detect_concerns_llm_returns_smells():
         ]
     }
 
-    with patch("arcade_agent.llm.ask_claude_json", return_value=llm_response), \
-         patch("arcade_agent.llm.MOCK_MODE", False):
+    with patch("arcade_agent.algorithms.llm.ask_claude_json", return_value=llm_response), \
+         patch("arcade_agent.algorithms.llm.MOCK_MODE", False):
         result = detect_concerns_llm(arch, graph)
 
     assert len(result) == 2
@@ -126,8 +126,8 @@ def test_detect_concerns_llm_filters_invalid_components():
         ]
     }
 
-    with patch("arcade_agent.llm.ask_claude_json", return_value=llm_response), \
-         patch("arcade_agent.llm.MOCK_MODE", False):
+    with patch("arcade_agent.algorithms.llm.ask_claude_json", return_value=llm_response), \
+         patch("arcade_agent.algorithms.llm.MOCK_MODE", False):
         result = detect_concerns_llm(arch, graph)
 
     # First smell fully invalid — dropped. Second partially valid — kept.
@@ -152,8 +152,8 @@ def test_detect_smells_use_llm_flag():
         ]
     }
 
-    with patch("arcade_agent.llm.ask_claude_json", return_value=llm_response), \
-         patch("arcade_agent.llm.MOCK_MODE", False):
+    with patch("arcade_agent.algorithms.llm.ask_claude_json", return_value=llm_response), \
+         patch("arcade_agent.algorithms.llm.MOCK_MODE", False):
         smells = detect_smells(arch, graph, use_llm=True)
 
     concern_smells = [s for s in smells if s.smell_type == "Concern Overload"]
@@ -166,7 +166,7 @@ def test_detect_smells_default_uses_heuristics():
     arch, graph = _make_large_arch()
 
     # Should not call LLM at all
-    with patch("arcade_agent.llm.ask_claude_json") as mock_llm:
+    with patch("arcade_agent.algorithms.llm.ask_claude_json") as mock_llm:
         smells = detect_smells(arch, graph, use_llm=False)
         mock_llm.assert_not_called()
 

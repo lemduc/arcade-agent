@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 import logging
 
-from arcade_agent.models.architecture import Architecture
-from arcade_agent.models.graph import DependencyGraph
+from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.parsers.graph import DependencyGraph
 
 log = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ def detect_concerns_llm(
         List of smell dicts with keys: smell_type, severity,
         affected_components, description, explanation, suggestion.
     """
-    from arcade_agent.llm import MOCK_MODE, ask_claude_json
+    from arcade_agent.algorithms.llm import MOCK_MODE, ask_claude_json
 
     if MOCK_MODE:
         log.info("Mock mode — skipping LLM concern detection")
@@ -288,7 +288,7 @@ def extract_concerns_llm(
         Dict mapping component name to a list of concern labels
         (e.g. ``{"Clustering": ["agglomerative clustering", "similarity measures"]}``).
     """
-    from arcade_agent.llm import MOCK_MODE, ask_claude_json
+    from arcade_agent.algorithms.llm import MOCK_MODE, ask_claude_json
 
     if MOCK_MODE:
         log.info("Mock mode — skipping LLM concern extraction")

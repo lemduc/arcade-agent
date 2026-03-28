@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from arcade_agent.models.architecture import Architecture, Component
-from arcade_agent.models.graph import DependencyGraph, Edge, Entity
+from arcade_agent.algorithms.architecture import Architecture, Component
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 

@@ -1,8 +1,8 @@
 """Tool: Query and explore the recovered architecture."""
 
-from arcade_agent.models.architecture import Architecture
-from arcade_agent.models.graph import DependencyGraph
-from arcade_agent.registry import tool
+from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.tools.registry import tool
 
 
 @tool(

@@ -16,8 +16,8 @@ import json
 import logging
 import math
 
-from arcade_agent.models.architecture import Architecture, Component
-from arcade_agent.models.graph import DependencyGraph
+from arcade_agent.algorithms.architecture import Architecture, Component
+from arcade_agent.parsers.graph import DependencyGraph
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def _tag_entities_llm(
     Entities are sent in package-grouped batches to stay within the token
     budget.  Returns a mapping ``{entity_fqn: [concern_label, ...]}``.
     """
-    from arcade_agent.llm import MOCK_MODE, ask_claude_json
+    from arcade_agent.algorithms.llm import MOCK_MODE, ask_claude_json
 
     if MOCK_MODE:
         return _tag_entities_heuristic(dep_graph)

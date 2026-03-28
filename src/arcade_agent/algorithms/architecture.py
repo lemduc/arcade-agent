@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from arcade_agent.models.graph import DependencyGraph
+from arcade_agent.parsers.graph import DependencyGraph
 
 
 @dataclass

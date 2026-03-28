@@ -5,9 +5,9 @@ Implements:
   using similarity measures between entities based on their dependency structure.
 """
 
+from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.similarity import compute_similarity_matrix
-from arcade_agent.models.architecture import Architecture, Component
-from arcade_agent.models.graph import DependencyGraph
+from arcade_agent.parsers.graph import DependencyGraph
 
 
 def wca(

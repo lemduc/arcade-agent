@@ -16,7 +16,7 @@ from pathlib import Path
 # Ensure arcade_agent is importable from src/
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from arcade_agent.models.smells import SmellInstance
+from arcade_agent.algorithms.smells import SmellInstance
 from arcade_agent.tools.compute_metrics import compute_metrics
 from arcade_agent.tools.detect_smells import detect_smells
 from arcade_agent.tools.ingest import ingest

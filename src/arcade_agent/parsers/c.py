@@ -6,8 +6,8 @@ import tree_sitter_c as tsc
 import tree_sitter_cpp as tscpp
 from tree_sitter import Language, Parser
 
-from arcade_agent.models.graph import DependencyGraph, Edge, Entity
 from arcade_agent.parsers.base import LanguageParser, register_parser
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 
 C_LANGUAGE = Language(tsc.language())
 CPP_LANGUAGE = Language(tscpp.language())

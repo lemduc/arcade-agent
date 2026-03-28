@@ -3,10 +3,10 @@
 import json
 from dataclasses import asdict
 
-from arcade_agent.models.architecture import Architecture
-from arcade_agent.models.graph import DependencyGraph
-from arcade_agent.models.metrics import MetricResult
-from arcade_agent.models.smells import SmellInstance
+from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.algorithms.metrics import MetricResult
+from arcade_agent.algorithms.smells import SmellInstance
+from arcade_agent.parsers.graph import DependencyGraph
 
 
 def export_json(

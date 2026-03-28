@@ -1,7 +1,7 @@
 """Tests for the detect_smells tool."""
 
-from arcade_agent.models.architecture import Architecture, Component
-from arcade_agent.models.graph import DependencyGraph, Edge, Entity
+from arcade_agent.algorithms.architecture import Architecture, Component
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 from arcade_agent.tools.detect_smells import detect_smells
 
 

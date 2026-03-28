@@ -5,8 +5,8 @@ from pathlib import Path
 import tree_sitter_java as tsjava
 from tree_sitter import Language, Parser
 
-from arcade_agent.models.graph import DependencyGraph, Edge, Entity
 from arcade_agent.parsers.base import LanguageParser, register_parser
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 
 JAVA_LANGUAGE = Language(tsjava.language())
 

@@ -2,16 +2,16 @@
 
 from pathlib import Path
 
+from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.algorithms.metrics import MetricResult
+from arcade_agent.algorithms.smells import SmellInstance
 from arcade_agent.exporters.dot import export_dot
 from arcade_agent.exporters.html import export_html
 from arcade_agent.exporters.json import export_json
 from arcade_agent.exporters.mermaid import build_mermaid_diagram
 from arcade_agent.exporters.rsf import export_rsf
-from arcade_agent.models.architecture import Architecture
-from arcade_agent.models.graph import DependencyGraph
-from arcade_agent.models.metrics import MetricResult
-from arcade_agent.models.smells import SmellInstance
-from arcade_agent.registry import tool
+from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.tools.registry import tool
 
 
 @tool(

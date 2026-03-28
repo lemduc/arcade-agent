@@ -1,7 +1,7 @@
 """GraphViz DOT format export."""
 
-from arcade_agent.models.architecture import Architecture
-from arcade_agent.models.graph import DependencyGraph
+from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.parsers.graph import DependencyGraph
 
 
 def _escape_dot(s: str) -> str:

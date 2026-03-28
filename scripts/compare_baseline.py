@@ -18,7 +18,7 @@ from pathlib import Path
 # Ensure arcade_agent is importable from src/
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from arcade_agent.models.architecture import Architecture, Component
+from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.tools.compare import compare
 
 

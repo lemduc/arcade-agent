@@ -2,8 +2,8 @@
 
 import networkx as nx
 
-from arcade_agent.models.architecture import Architecture
-from arcade_agent.models.graph import DependencyGraph
+from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.parsers.graph import DependencyGraph
 
 
 def detect_dependency_cycles(

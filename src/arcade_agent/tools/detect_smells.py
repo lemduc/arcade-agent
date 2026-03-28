@@ -1,5 +1,6 @@
 """Tool: Detect architectural smells."""
 
+from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.concern import (
     detect_concern_overload,
     detect_concerns_llm,
@@ -7,10 +8,9 @@ from arcade_agent.algorithms.concern import (
     detect_scattered_functionality,
 )
 from arcade_agent.algorithms.cycles import detect_dependency_cycles
-from arcade_agent.models.architecture import Architecture
-from arcade_agent.models.graph import DependencyGraph
-from arcade_agent.models.smells import SmellInstance, SmellType
-from arcade_agent.registry import tool
+from arcade_agent.algorithms.smells import SmellInstance, SmellType
+from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.tools.registry import tool
 
 
 @tool(

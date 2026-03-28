@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-from arcade_agent.models.graph import DependencyGraph
+from arcade_agent.parsers.graph import DependencyGraph
 
 
 class LanguageParser(ABC):
