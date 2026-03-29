@@ -5,6 +5,9 @@ Implements:
   using similarity measures between entities based on their dependency structure.
 """
 
+from collections import Counter
+from pathlib import Path
+
 from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.similarity import compute_similarity_matrix
 from arcade_agent.parsers.graph import DependencyGraph
@@ -78,9 +81,16 @@ def wca(
 
     # Build architecture from clusters
     components = []
+    seen_names: set[str] = set()
     for key, members in sorted(clusters.items()):
         # Name from common package prefix
         name = _cluster_name(members, dep_graph)
+        base_name = name
+        counter = 1
+        while name in seen_names:
+            counter += 1
+            name = f"{base_name}{counter}"
+        seen_names.add(name)
         components.append(
             Component(
                 name=name,
@@ -114,16 +124,40 @@ def _cluster_similarity(
 
 def _cluster_name(members: list[str], dep_graph: DependencyGraph) -> str:
     """Generate a meaningful name for a cluster from its members."""
+    common_prefix = _common_package_prefix(dep_graph)
     packages = set()
+    package_tokens: Counter[str] = Counter()
+    stem_tokens: Counter[str] = Counter()
     for fqn in members:
         entity = dep_graph.entities.get(fqn)
         if entity:
             packages.add(entity.package)
+            parts = entity.package.split(".") if entity.package else []
+            if parts[:len(common_prefix)] == common_prefix:
+                remainder = parts[len(common_prefix):]
+            else:
+                remainder = parts
+            if remainder:
+                package_tokens.update(remainder[:2])
+            stem = Path(entity.file_path).stem
+            if stem and stem != "__init__":
+                stem_tokens[stem] += 1
 
     if len(packages) == 1:
         pkg = packages.pop()
         parts = pkg.split(".")
         return parts[-1].title() if parts[-1] else "Default"
+
+    package_name = _most_specific_token(package_tokens, excluded=set())
+    stem_name = _most_specific_token(stem_tokens, excluded={"__init__"})
+    if package_name and stem_name:
+        if package_name.lower() == stem_name.lower():
+            return _title_token(package_name)
+        return f"{_title_token(package_name)}{_title_token(stem_name)}"
+    if package_name:
+        return _title_token(package_name)
+    if stem_name:
+        return _title_token(stem_name)
 
     # Find common prefix
     pkg_list = sorted(packages)
@@ -143,3 +177,31 @@ def _cluster_name(members: list[str], dep_graph: DependencyGraph) -> str:
     if entity:
         return entity.package.split(".")[-1].title() if entity.package else entity.name
     return "Cluster"
+
+
+def _most_specific_token(counter: Counter[str], excluded: set[str]) -> str | None:
+    """Pick the most informative token from a frequency counter."""
+    for token, _count in counter.most_common():
+        if token and token not in excluded:
+            return token
+    return None
+
+
+def _title_token(token: str) -> str:
+    """Convert a package token or file stem into a component name fragment."""
+    return token.replace("_", " ").title().replace(" ", "")
+
+
+def _common_package_prefix(dep_graph: DependencyGraph) -> list[str]:
+    """Find the longest common package prefix across the whole graph."""
+    packages = [entity.package for entity in dep_graph.entities.values() if entity.package]
+    if not packages:
+        return []
+    split_packages = [package.split(".") for package in packages]
+    prefix = []
+    for segments in zip(*split_packages):
+        if len(set(segments)) == 1:
+            prefix.append(segments[0])
+        else:
+            break
+    return prefix

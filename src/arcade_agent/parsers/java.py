@@ -67,6 +67,7 @@ def _parse_type_declaration(node) -> dict | None:
         "kind": kind_map.get(node.type, "class"),
         "superclass": None,
         "interfaces": [],
+        "node": node,
     }
 
     for child in node.children:
@@ -84,6 +85,33 @@ def _parse_type_declaration(node) -> dict | None:
                             decl["interfaces"].append(_get_text(type_node))
 
     return decl
+
+
+def _extract_methods(type_decl: dict, package: str) -> list[dict]:
+    """Extract methods and constructors from a type declaration."""
+    methods = []
+    body_types = {"class_body", "interface_body", "enum_body"}
+    owner_name = type_decl["name"]
+    owner_fqn = f"{package}.{owner_name}" if package else owner_name
+
+    for child in type_decl["node"].children:
+        if child.type not in body_types:
+            continue
+        for member in child.children:
+            if member.type not in {"method_declaration", "constructor_declaration"}:
+                continue
+
+            name_node = member.child_by_field_name("name")
+            if name_node is None:
+                continue
+
+            methods.append({
+                "name": _get_text(name_node),
+                "kind": "method",
+                "owner_fqn": owner_fqn,
+            })
+
+    return methods
 
 
 def _resolve_name(
@@ -173,6 +201,20 @@ class JavaParser(LanguageParser):
 
                 entities[fqn] = entity
                 packages.setdefault(package, []).append(fqn)
+
+                for method_decl in _extract_methods(decl, package):
+                    method_fqn = f"{method_decl['owner_fqn']}.{method_decl['name']}"
+                    entities[method_fqn] = Entity(
+                        fqn=method_fqn,
+                        name=method_decl["name"],
+                        package=package,
+                        file_path=rel_path,
+                        kind="method",
+                        language="java",
+                        imports=imports,
+                        properties={"owner": method_decl["owner_fqn"]},
+                    )
+                    packages.setdefault(package, []).append(method_fqn)
 
         # Build name -> fqn index
         fqn_index: dict[str, str] = {}

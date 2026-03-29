@@ -48,18 +48,37 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev,languages]"
 
-      # ── 1. Run self-analysis ───────────────────────────────────────────────
-      - name: Run self-analysis
+      # ── 1. Run primary self-analysis (stable CI trend) ────────────────────
+      - name: Run primary self-analysis
         run: |
           python scripts/run_self_analysis.py \
-            --algorithm wca \
-            --num-clusters 4 \
+            --algorithm pkg \
             --output-json arcade_analysis_results.json \
             --output-html arcade_analysis_report.html
 
+      # ── 1b. Run secondary/exploratory analyses for reference ──────────────
+      - name: Run secondary architecture analyses
+        run: |
+          python scripts/run_self_analysis.py \
+            --algorithm acdc \
+            --output-json arcade_analysis_acdc.json \
+            --output-html arcade_analysis_acdc.html
+          python scripts/run_self_analysis.py \
+            --algorithm wca \
+            --num-clusters 4 \
+            --output-json arcade_analysis_wca.json \
+            --output-html arcade_analysis_wca.html
+
       # ── 2. Display results inline in Actions logs ──────────────────────────
-      - name: Display analysis results
+      - name: Display primary analysis results
         run: python scripts/log_analysis_summary.py arcade_analysis_results.json
+
+      - name: Display secondary analysis results
+        run: |
+          echo "== ACDC =="
+          python scripts/log_analysis_summary.py arcade_analysis_acdc.json
+          echo "== WCA (exploratory) =="
+          python scripts/log_analysis_summary.py arcade_analysis_wca.json
 
       # ── 3. Download baseline from last successful main-branch run ──────────
       - name: Download baseline (if available)
@@ -121,13 +140,25 @@ jobs:
       - name: Compare with baseline and generate comment
         run: |
           BASELINE_ARG=""
+          BASELINE_NOTE=""
+          CURRENT_ALGORITHM=$(python -c "import json; from pathlib import Path; print(json.loads(Path('arcade_analysis_results.json').read_text()).get('algorithm', ''))")
           if [ -f baseline_dir/arcade_analysis_baseline.json ]; then
-            BASELINE_ARG="baseline_dir/arcade_analysis_baseline.json"
+            BASELINE_ALGORITHM=$(python -c "import json; from pathlib import Path; print(json.loads(Path('baseline_dir/arcade_analysis_baseline.json').read_text()).get('algorithm', ''))")
+            if [ "$BASELINE_ALGORITHM" = "$CURRENT_ALGORITHM" ]; then
+              BASELINE_ARG="baseline_dir/arcade_analysis_baseline.json"
+            else
+              BASELINE_NOTE="Improvement tracking is temporarily unavailable because the stored baseline uses '$BASELINE_ALGORITHM' while the current primary analysis uses '$CURRENT_ALGORITHM'. After the next successful push to main, the baseline will be refreshed and PR improvement deltas will resume."
+              echo "$BASELINE_NOTE"
+            fi
+          else
+            BASELINE_NOTE="Improvement tracking is unavailable because no baseline artifact was found yet. After the next successful push to main, PR improvement deltas will appear."
           fi
           python scripts/compare_baseline.py \
             arcade_analysis_results.json \
             $BASELINE_ARG \
             --output pr_comment.md \
+            --output-html arcade_analysis_comparison.html \
+            --baseline-note "$BASELINE_NOTE" \
             --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       # ── 5. Upload HTML report + JSON as CI artifact ────────────────────────
@@ -137,7 +168,13 @@ jobs:
           name: arcade-agent-self-analysis
           path: |
             arcade_analysis_report.html
+            arcade_analysis_acdc.html
+            arcade_analysis_wca.html
+            arcade_analysis_comparison.html
             arcade_analysis_results.json
+            arcade_analysis_acdc.json
+            arcade_analysis_wca.json
+            pr_comment.md
           retention-days: 30
 
       # ── 6. Store baseline artifact (only on main-branch pushes) ───────────

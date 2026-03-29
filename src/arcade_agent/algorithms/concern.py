@@ -18,33 +18,60 @@ log = logging.getLogger(__name__)
 
 def detect_concern_overload(
     architecture: Architecture,
+    dep_graph: DependencyGraph,
     threshold: int = 20,
     high_threshold: int = 40,
+    min_internal_edges_per_entity: float = 0.4,
 ) -> list[dict]:
     """Detect components with too many responsibilities.
 
-    A component is flagged if it contains more entities than the threshold,
-    suggesting it handles multiple concerns.
+    A component is flagged only when it is both large and internally sparse.
+    Size alone is too noisy for package-based recovery: a large library package
+    may still be cohesive if its entities collaborate heavily.
 
     Args:
         architecture: The recovered architecture.
+        dep_graph: Dependency graph used to measure internal cohesion.
         threshold: Minimum entity count to flag (default: 20).
         high_threshold: Entity count for high severity (default: 40).
+        min_internal_edges_per_entity: Minimum internal edge density guard.
+            Components at or above this ratio are treated as cohesive enough
+            to avoid a concern-overload warning.
 
     Returns:
-        List of dicts with component name, entity count, and severity.
+        List of dicts with component name, entity count, severity, and
+        cohesion details.
     """
     results = []
     for comp in architecture.components:
         count = len(comp.entities)
-        if count > threshold:
-            severity = "high" if count > high_threshold else "medium"
-            results.append({
-                "component": comp.name,
-                "entity_count": count,
-                "severity": severity,
-            })
+        if count <= threshold:
+            continue
+
+        internal_edges = _count_internal_edges(comp.entities, dep_graph)
+        internal_edges_per_entity = internal_edges / count if count else 0.0
+        if internal_edges_per_entity >= min_internal_edges_per_entity:
+            continue
+
+        severity = "high" if count > high_threshold else "medium"
+        results.append({
+            "component": comp.name,
+            "entity_count": count,
+            "severity": severity,
+            "internal_edges": internal_edges,
+            "internal_edges_per_entity": round(internal_edges_per_entity, 2),
+        })
     return results
+
+
+def _count_internal_edges(component_entities: list[str], dep_graph: DependencyGraph) -> int:
+    """Count entity-level edges that stay within a component."""
+    entity_set = set(component_entities)
+    return sum(
+        1
+        for edge in dep_graph.edges
+        if edge.source in entity_set and edge.target in entity_set
+    )
 
 
 def detect_scattered_functionality(

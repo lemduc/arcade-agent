@@ -589,3 +589,237 @@ def export_comparison_html(
 
     output_path.write_text(html)
     return output_path
+
+
+def build_snapshot_mermaid(snapshot: dict | None) -> str:
+    """Build a Mermaid diagram from stored component snapshots."""
+    if not snapshot:
+        return "graph TD\n    Empty[\"No baseline snapshot\"]"
+
+    def node_id(name: str) -> str:
+        nid = name.replace(" ", "_").replace("-", "_").replace(".", "_")
+        nid = "".join(char for char in nid if char.isalnum() or char == "_")
+        return nid or "unnamed"
+
+    lines = ["graph TD"]
+    components = snapshot.get("components", [])
+    dependencies = snapshot.get("component_dependencies", [])
+
+    for component in components:
+        label = (
+            f"{component['name']}\\n"
+            f"{component.get('num_entities', len(component.get('entities', [])))} entities\\n"
+            f"{component.get('class_count', 0)} classes / {component.get('method_count', 0)} methods"
+        )
+        lines.append(f"    {node_id(component['name'])}[\"{label}\"]")
+
+    for dep in dependencies:
+        lines.append(
+            f"    {node_id(dep['source'])} --> {node_id(dep['target'])}"
+        )
+
+    return "\n".join(lines)
+
+
+EVOLUTION_TEMPLATE = Template("""\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>arcade-agent: {{ repo_name }} — Architecture Evolution</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6; color: #1f2937; background: #f8fafc;
+            max-width: 1500px; margin: 0 auto; padding: 2rem; padding-top: 4rem;
+        }
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: #0f172a; padding: 0.7rem 2rem; display: flex;
+            align-items: center; gap: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+            flex-wrap: wrap;
+        }
+        nav .nav-title { color: #f8fafc; font-weight: 700; margin-right: 0.5rem; }
+        nav a {
+            color: #94a3b8; text-decoration: none; font-size: 0.85rem;
+            padding: 0.25rem 0.6rem; border-radius: 6px;
+        }
+        nav a:hover { color: #fff; background: #1e293b; }
+        h1 { font-size: 1.9rem; margin-bottom: 0.35rem; }
+        h2 { font-size: 1.35rem; margin: 2rem 0 1rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.45rem; }
+        .subtitle { color: #64748b; margin-bottom: 1.5rem; }
+        .stats { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+        .stat-card {
+            background: white; border-radius: 12px; padding: 1rem 1.25rem; min-width: 170px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+        }
+        .stat-card .number { font-size: 1.6rem; font-weight: 700; color: #0f766e; }
+        .stat-card .label { font-size: 0.8rem; color: #64748b; }
+        .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
+        .card {
+            background: white; border-radius: 12px; padding: 1.25rem;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+            margin-bottom: 1rem;
+        }
+        .section-label { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
+        table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+        th, td { text-align: left; padding: 0.7rem; border-bottom: 1px solid #e2e8f0; font-size: 0.9rem; }
+        th { background: #f8fafc; font-size: 0.8rem; text-transform: uppercase; color: #475569; }
+        .delta-positive { color: #047857; font-weight: 600; }
+        .delta-negative { color: #b91c1c; font-weight: 600; }
+        .delta-neutral { color: #475569; font-weight: 600; }
+        .badge {
+            display: inline-block; border-radius: 999px; padding: 0.2rem 0.55rem;
+            font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+        }
+        .badge.matched { background: #dbeafe; color: #1d4ed8; }
+        .badge.added { background: #dcfce7; color: #15803d; }
+        .badge.removed { background: #fee2e2; color: #b91c1c; }
+        .muted { color: #64748b; }
+        .full-width { grid-column: 1 / -1; }
+        .mermaid { text-align: center; }
+        .link { margin-top: 0.75rem; }
+        @media (max-width: 960px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <span class="nav-title">arcade-agent</span>
+        <a href="#overview">Overview</a>
+        <a href="#diagrams">Diagrams</a>
+        <a href="#components">Components</a>
+        <a href="#dependencies">Dependencies</a>
+        <a href="#metrics">Metrics</a>
+    </nav>
+
+    <h1 id="overview">Architecture Evolution Report</h1>
+    <p class="subtitle">{{ repo_name }} — before/after comparison of high-level components and source statistics</p>
+
+    <div class="stats">
+        {% for card in overview_cards %}
+        <div class="stat-card">
+            <div class="number">{{ card.value }}</div>
+            <div class="label">{{ card.label }}</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="grid" id="diagrams">
+        <div class="card">
+            <div class="section-label">Baseline</div>
+            <div class="muted">Commit {{ baseline_commit }}</div>
+            <pre class="mermaid">{{ baseline_mermaid }}</pre>
+        </div>
+        <div class="card">
+            <div class="section-label">Current</div>
+            <div class="muted">Commit {{ current_commit }}</div>
+            <pre class="mermaid">{{ current_mermaid }}</pre>
+        </div>
+    </div>
+
+    <h2 id="metrics">Metric And Source Statistics</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Metric</th>
+                    <th>Baseline</th>
+                    <th>Current</th>
+                    <th>Delta</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in metric_rows %}
+                <tr>
+                    <td>{{ row.name }}</td>
+                    <td>{{ row.baseline }}</td>
+                    <td>{{ row.current }}</td>
+                    <td class="{{ row.delta_class }}">{{ row.delta }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if run_url %}
+        <p class="link"><a href="{{ run_url }}">Open GitHub Actions run for artifacts</a></p>
+        {% endif %}
+    </div>
+
+    <h2 id="components">Component Changes</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Baseline</th>
+                    <th>Current</th>
+                    <th>Similarity</th>
+                    <th>Entities</th>
+                    <th>Classes</th>
+                    <th>Methods</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in component_rows %}
+                <tr>
+                    <td><span class="badge {{ row.status }}">{{ row.status }}</span></td>
+                    <td>{{ row.baseline_name }}</td>
+                    <td>{{ row.current_name }}</td>
+                    <td>{{ row.similarity }}</td>
+                    <td>{{ row.entities }}</td>
+                    <td>{{ row.classes }}</td>
+                    <td>{{ row.methods }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h2 id="dependencies">Component Dependency Changes</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>Source</th>
+                    <th>Target</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in dependency_rows %}
+                <tr>
+                    <td><span class="badge {{ row.status }}">{{ row.status }}</span></td>
+                    <td>{{ row.source }}</td>
+                    <td>{{ row.target }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <script>mermaid.initialize({ startOnLoad: true, theme: 'neutral', securityLevel: 'loose' });</script>
+</body>
+</html>
+""")
+
+
+def export_evolution_html(report: dict, output_path: Path) -> Path:
+    """Generate a before/after HTML report from stored analysis snapshots."""
+    html = EVOLUTION_TEMPLATE.render(
+        repo_name=report["repo_name"],
+        baseline_commit=report["baseline_commit"],
+        current_commit=report["current_commit"],
+        overview_cards=report["overview_cards"],
+        metric_rows=report["metric_rows"],
+        component_rows=report["component_rows"],
+        dependency_rows=report["dependency_rows"],
+        baseline_mermaid=build_snapshot_mermaid(report.get("baseline")),
+        current_mermaid=build_snapshot_mermaid(report["current"]),
+        run_url=report.get("run_url", ""),
+    )
+    output_path.write_text(html)
+    return output_path

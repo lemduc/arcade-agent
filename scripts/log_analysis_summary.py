@@ -6,7 +6,6 @@ Usage:
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -29,6 +28,10 @@ def _quality_label(rci: float) -> str:
     if rci >= 0.6:
         return "Fair"
     return "Poor"
+
+
+def _component_count(component: dict) -> int:
+    return component.get("num_entities") or len(component.get("entities", []))
 
 
 def main() -> None:
@@ -60,6 +63,9 @@ def main() -> None:
     print(f"│{'':2}{'📦 Components':20} {r.get('num_components', '?'):<10}{'':29}│")
     print(f"│{'':2}{'🧩 Entities':20} {r.get('num_entities', '?'):<10}{'':29}│")
     print(f"│{'':2}{'🔗 Edges':20} {r.get('num_edges', '?'):<10}{'':29}│")
+    print(f"│{'':2}{'🏷️ Classes':20} {r.get('class_count', 0):<10}{'':29}│")
+    print(f"│{'':2}{'ƒ Functions':20} {r.get('function_count', 0):<10}{'':29}│")
+    print(f"│{'':2}{'🔧 Methods':20} {r.get('method_count', 0):<10}{'':29}│")
     print(f"├{border}┤")
 
     # Metrics
@@ -77,10 +83,13 @@ def main() -> None:
     # Components
     print(f"│{'🏗️  COMPONENTS':^{width}}│")
     print(f"├{border}┤")
-    for comp in sorted(components, key=lambda c: -(c.get("num_entities") or len(c.get("entities", [])))):
-        count = comp.get("num_entities") or len(comp.get("entities", []))
+    for comp in sorted(components, key=lambda c: (-_component_count(c), c["name"])):
+        count = _component_count(comp)
         bar = "█" * min(count // 3, 20)
-        line = f"  {comp['name']:<22} {count:>3} entities  {bar}"
+        line = (
+            f"  {comp['name']:<18} {count:>3} ent  "
+            f"{comp.get('class_count', 0):>2} cls  {comp.get('method_count', 0):>2} mth  {bar}"
+        )
         print(f"│{line:<{width}}│")
     print(f"├{border}┤")
 
@@ -98,63 +107,6 @@ def main() -> None:
         print(f"│{'  ✅ No architectural smells detected':<{width}}│")
 
     print(f"└{border}┘")
-
-    # GitHub Actions step summary (if available)
-    summary_file = Path(os.environ.get("GITHUB_STEP_SUMMARY", "/dev/null"))
-    if summary_file != Path("/dev/null"):
-        try:
-            _write_step_summary(summary_file, r, rci, turbo_mq, smells, components, metrics)
-        except Exception as exc:
-            print(f"[warn] Could not write step summary: {exc}")
-
-
-def _write_step_summary(
-    path: Path,
-    r: dict,
-    rci: float,
-    turbo_mq: float,
-    smells: list,
-    components: list,
-    metrics: dict,
-) -> None:
-    icon = _rci_icon(rci)
-    label = _quality_label(rci)
-    lines = [
-        "## 🏛️ Architecture Analysis Results\n",
-        "| Metric | Value |",
-        "|--------|-------|",
-        f"| 📦 Components | {r.get('num_components')} |",
-        f"| 🧩 Entities | {r.get('num_entities')} |",
-        f"| 🔗 Edges | {r.get('num_edges')} |",
-        f"| RCI {icon} | {rci:.4f} ({label}) |",
-        f"| TurboMQ | {turbo_mq:.4f} |",
-    ]
-    for name, val in metrics.items():
-        if name not in ("RCI", "TurboMQ"):
-            lines.append(f"| {name} | {val:.4f} |")
-
-    lines.append("\n### 🏗️ Components\n")
-    lines.append("| Component | Entities |")
-    lines.append("|-----------|----------|")
-    for comp in sorted(components, key=lambda c: -(c.get("num_entities") or len(c.get("entities", [])))):
-        count = comp.get("num_entities") or len(comp.get("entities", []))
-        lines.append(f"| {comp['name']} | {count} |")
-
-    lines.append("\n### 🚨 Architectural Smells\n")
-    if smells:
-        lines.append("| Severity | Type | Affected |")
-        lines.append("|----------|------|----------|")
-        for s in smells:
-            si = _severity_icon(s.get("severity", ""))
-            stype = s.get("smell_type", "Unknown")
-            comps = ", ".join(s.get("affected_components", []))
-            lines.append(f"| {si} {s.get('severity','?')} | {stype} | {comps} |")
-    else:
-        lines.append("✅ No architectural smells detected.")
-
-    with path.open("a") as f:
-        f.write("\n".join(lines) + "\n")
-
 
 if __name__ == "__main__":
     main()

@@ -44,3 +44,12 @@ def test_python_parser_skips_empty_init_modules(tmp_path):
 
     assert "pkg" not in graph.entities
     assert "pkg.service.run" in graph.entities
+
+
+def test_python_parser_extracts_methods(python_files, fixtures_dir):
+    parser = PythonParser()
+    graph = parser.parse(python_files, fixtures_dir)
+
+    assert "app.UserService.add_user" in graph.entities
+    assert graph.entities["app.UserService.add_user"].kind == "method"
+    assert graph.entities["app.UserService.add_user"].properties["owner"] == "app.UserService"

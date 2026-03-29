@@ -138,6 +138,38 @@ def _extract_functions(root_node) -> list[dict]:
     return functions
 
 
+def _extract_methods(classes: list[dict], module_name: str) -> list[dict]:
+    """Extract methods declared directly inside classes."""
+    methods = []
+    for cls in classes:
+        actual = _unwrap_decorated(cls["node"])
+        body = actual.child_by_field_name("body")
+        if body is None:
+            continue
+
+        owner_name = cls["name"]
+        owner_fqn = f"{module_name}.{owner_name}" if module_name else owner_name
+        for node in body.children:
+            actual_method = _unwrap_decorated(node)
+            if actual_method.type != "function_definition":
+                continue
+
+            name_node = actual_method.child_by_field_name("name")
+            if not name_node:
+                continue
+
+            methods.append({
+                "name": _get_text(name_node),
+                "kind": "method",
+                "superclass": None,
+                "interfaces": [],
+                "node": node,
+                "owner_fqn": owner_fqn,
+            })
+
+    return methods
+
+
 def _extract_referenced_names(node) -> set[str]:
     """Collect identifier and attribute names *used at runtime* within a node.
 
@@ -229,8 +261,9 @@ class PythonParser(LanguageParser):
 
             classes = _extract_classes(root_node)
             functions = _extract_functions(root_node)
+            methods = _extract_methods(classes, module_name)
 
-            all_decls = classes + functions
+            all_decls = classes + methods + functions
 
             if _should_skip_module_entity(py_file, all_decls):
                 continue
@@ -254,7 +287,11 @@ class PythonParser(LanguageParser):
                 entity_refs[fqn] = _extract_referenced_names(root_node)
             else:
                 for decl in all_decls:
-                    fqn = f"{module_name}.{decl['name']}" if module_name else decl["name"]
+                    owner_fqn = decl.get("owner_fqn")
+                    if owner_fqn:
+                        fqn = f"{owner_fqn}.{decl['name']}"
+                    else:
+                        fqn = f"{module_name}.{decl['name']}" if module_name else decl["name"]
                     # Extract names actually referenced within this function/class body
                     refs = _extract_referenced_names(decl["node"]) if decl.get("node") else set()
                     entity = Entity(
@@ -267,6 +304,7 @@ class PythonParser(LanguageParser):
                         imports=[imp["module"] for imp in file_imports],
                         superclass=decl.get("superclass"),
                         interfaces=decl.get("interfaces", []),
+                        properties={"owner": owner_fqn} if owner_fqn else {},
                     )
                     entities[fqn] = entity
                     packages.setdefault(package, []).append(fqn)
