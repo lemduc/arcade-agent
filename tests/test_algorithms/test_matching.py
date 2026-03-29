@@ -1,7 +1,7 @@
 """Tests for the matching algorithm."""
 
+from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.matching import compute_a2a_similarity, match_components
-from arcade_agent.models.architecture import Architecture, Component
 
 
 def test_identical_architectures():

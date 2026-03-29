@@ -10,7 +10,7 @@ from arcade_agent.algorithms.arc import (
     _tag_entities_heuristic,
     arc,
 )
-from arcade_agent.models.graph import DependencyGraph, Edge, Entity
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 
 
 def _make_graph():
@@ -139,7 +139,7 @@ def test_tag_entities_heuristic():
 def test_arc_mock_mode():
     """ARC in mock mode should use heuristic tagging and produce components."""
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         arch = arc(graph, num_clusters=3)
     assert arch.algorithm == "arc"
     assert len(arch.components) == 3
@@ -163,8 +163,8 @@ def test_arc_with_llm():
         "com.app.ui.Renderer": ["ui rendering", "graphics"],
     }
 
-    with patch("arcade_agent.llm.MOCK_MODE", False), \
-         patch("arcade_agent.llm.ask_claude_json", return_value=llm_tags):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", False), \
+         patch("arcade_agent.algorithms.llm.ask_claude_json", return_value=llm_tags):
         arch = arc(graph, num_clusters=3)
 
     assert arch.algorithm == "arc"
@@ -187,7 +187,7 @@ def test_arc_with_llm():
 def test_arc_components_have_responsibility():
     """ARC components should have concern-derived responsibility strings."""
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         arch = arc(graph, num_clusters=3)
     for comp in arch.components:
         assert comp.responsibility  # Not empty
@@ -197,7 +197,7 @@ def test_arc_components_have_responsibility():
 def test_arc_hybrid_weight():
     """Different hybrid weights should produce valid architectures."""
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         # Pure semantic
         arch_sem = arc(graph, num_clusters=3, hybrid_weight=1.0)
         assert len(arch_sem.components) == 3
@@ -215,7 +215,7 @@ def test_recover_tool_arc():
     """Verify recover() accepts algorithm='arc'."""
     from arcade_agent.tools.recover import recover
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         arch = recover(graph, algorithm="arc", num_clusters=3)
     assert arch.algorithm == "arc"
     assert len(arch.components) == 3

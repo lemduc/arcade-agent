@@ -7,7 +7,7 @@ from pathlib import Path
 
 from git import GitCommandError, Repo
 
-from arcade_agent.registry import tool
+from arcade_agent.tools.registry import tool
 
 
 @dataclass

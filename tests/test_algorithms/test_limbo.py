@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from arcade_agent.algorithms.arc import _js_divergence
 from arcade_agent.algorithms.limbo import _info_loss, limbo
-from arcade_agent.models.graph import DependencyGraph, Edge, Entity
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 
 
 def _make_graph():
@@ -122,7 +122,7 @@ def test_limbo_empty_graph():
 def test_limbo_mock_mode():
     """LIMBO in mock mode should produce valid components."""
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         arch = limbo(graph, num_clusters=3)
     assert arch.algorithm == "limbo"
     assert len(arch.components) == 3
@@ -146,8 +146,8 @@ def test_limbo_with_llm():
         "com.app.ui.Renderer": ["ui rendering", "graphics"],
     }
 
-    with patch("arcade_agent.llm.MOCK_MODE", False), \
-         patch("arcade_agent.llm.ask_claude_json", return_value=llm_tags):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", False), \
+         patch("arcade_agent.algorithms.llm.ask_claude_json", return_value=llm_tags):
         arch = limbo(graph, num_clusters=3)
 
     assert arch.algorithm == "limbo"
@@ -167,7 +167,7 @@ def test_limbo_with_llm():
 def test_limbo_components_have_responsibility():
     """LIMBO components should have concern-derived responsibility strings."""
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         arch = limbo(graph, num_clusters=3)
     for comp in arch.components:
         assert comp.responsibility
@@ -177,7 +177,7 @@ def test_limbo_components_have_responsibility():
 def test_limbo_hybrid_weight():
     """Different hybrid weights should produce valid architectures."""
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         # Pure semantic (info-loss only)
         arch_sem = limbo(graph, num_clusters=3, hybrid_weight=1.0)
         assert len(arch_sem.components) == 3
@@ -194,7 +194,7 @@ def test_limbo_hybrid_weight():
 def test_limbo_metadata():
     """LIMBO should populate metadata with algorithm parameters."""
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         arch = limbo(graph, num_clusters=3, hybrid_weight=0.7)
     assert arch.metadata["hybrid_weight"] == 0.7
     assert arch.metadata["num_clusters"] == 3
@@ -206,7 +206,7 @@ def test_recover_tool_limbo():
     """Verify recover() accepts algorithm='limbo'."""
     from arcade_agent.tools.recover import recover
     graph = _make_graph()
-    with patch("arcade_agent.llm.MOCK_MODE", True):
+    with patch("arcade_agent.algorithms.llm.MOCK_MODE", True):
         arch = recover(graph, algorithm="limbo", num_clusters=3)
     assert arch.algorithm == "limbo"
     assert len(arch.components) == 3

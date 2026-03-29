@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from arcade_agent.models.graph import DependencyGraph
 from arcade_agent.parsers.base import LanguageParser
+from arcade_agent.parsers.graph import DependencyGraph
 
 
 class TypeScriptParser(LanguageParser):

@@ -6,8 +6,8 @@ Pattern-based clustering that uses structural patterns like:
 to recover architectural components.
 """
 
-from arcade_agent.models.architecture import Architecture, Component
-from arcade_agent.models.graph import DependencyGraph
+from arcade_agent.algorithms.architecture import Architecture, Component
+from arcade_agent.parsers.graph import DependencyGraph
 
 
 def acdc(dep_graph: DependencyGraph) -> Architecture:

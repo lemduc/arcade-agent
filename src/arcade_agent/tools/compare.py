@@ -1,8 +1,8 @@
 """Tool: Compare architectures across versions (A2A analysis)."""
 
+from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.matching import compute_a2a_similarity, match_components
-from arcade_agent.models.architecture import Architecture
-from arcade_agent.registry import tool
+from arcade_agent.tools.registry import tool
 
 
 @tool(

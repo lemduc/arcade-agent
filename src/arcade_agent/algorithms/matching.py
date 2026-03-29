@@ -7,7 +7,7 @@ one-to-one matching between components of two architectures.
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from arcade_agent.models.architecture import Architecture
+from arcade_agent.algorithms.architecture import Architecture
 
 
 def match_components(

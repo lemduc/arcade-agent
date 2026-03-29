@@ -2,11 +2,11 @@
 
 from arcade_agent.algorithms.acdc import acdc
 from arcade_agent.algorithms.arc import arc
+from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.clustering import wca
 from arcade_agent.algorithms.limbo import limbo
-from arcade_agent.models.architecture import Architecture, Component
-from arcade_agent.models.graph import DependencyGraph
-from arcade_agent.registry import tool
+from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.tools.registry import tool
 
 
 def _package_based_recovery(
@@ -17,6 +17,9 @@ def _package_based_recovery(
 
     Uses adaptive depth: finds the common prefix, then groups by enough
     remaining segments to produce meaningful components (target: 5-20).
+
+    Entities whose package equals the common prefix (e.g. __init__ modules)
+    are assigned using their FQN so they join the correct sub-package group.
 
     Args:
         dep_graph: Dependency graph to cluster.
@@ -39,7 +42,14 @@ def _package_based_recovery(
         if remainder:
             key = ".".join(remainder[:depth])
         else:
-            key = parts[-1] if parts[0] else "(default)"
+            # Package equals common prefix — use FQN to find the right group.
+            # e.g. FQN "arcade_agent.algorithms" -> key "algorithms"
+            fqn_parts = fqn.split(".")
+            fqn_remainder = fqn_parts[len(common):]
+            if fqn_remainder:
+                key = ".".join(fqn_remainder[:depth])
+            else:
+                key = parts[-1] if parts[0] else "(default)"
         groups.setdefault(key, []).append(fqn)
 
     components = []
@@ -73,7 +83,11 @@ def _package_based_recovery(
 
 
 def _auto_depth(all_pkgs: list[str], common: list[str]) -> int:
-    """Auto-select grouping depth to target 5-20 components."""
+    """Auto-select grouping depth to target 5-20 components.
+
+    Uses unique package segments after the common prefix to estimate
+    how many components each depth level would produce.
+    """
     if not all_pkgs:
         return 2
 

@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from arcade_agent.models.graph import DependencyGraph
 from arcade_agent.parsers.base import detect_language, get_parser
-from arcade_agent.registry import tool
+from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.tools.registry import tool
 
 
 @tool(
