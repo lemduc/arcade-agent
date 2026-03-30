@@ -34,6 +34,7 @@ jobs:
   analysis:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       pull-requests: write  # needed to post PR comments
 
@@ -192,7 +193,7 @@ jobs:
 
       # ── 7. Auto-comment PR with analysis summary ───────────────────────────
       - name: Post analysis comment to PR
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           script: |
@@ -226,3 +227,8 @@ jobs:
               });
               console.log('Created new analysis comment.');
             }
+
+      - name: Skip PR comment on forked PRs
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "Skipping PR comment because pull_request workflows from forks do not receive a token with write access to PR comments."
