@@ -53,3 +53,27 @@ def test_python_parser_extracts_methods(python_files, fixtures_dir):
     assert "app.UserService.add_user" in graph.entities
     assert graph.entities["app.UserService.add_user"].kind == "method"
     assert graph.entities["app.UserService.add_user"].properties["owner"] == "app.UserService"
+
+
+def test_python_parser_keeps_decorator_edges(tmp_path):
+    package_dir = tmp_path / "pkg"
+    package_dir.mkdir()
+
+    registry_path = package_dir / "registry.py"
+    registry_path.write_text(
+        "def tool(fn):\n"
+        "    return fn\n"
+    )
+    module_path = package_dir / "service.py"
+    module_path.write_text(
+        "from pkg.registry import tool\n\n"
+        "@tool\n"
+        "def run():\n"
+        "    return 1\n"
+    )
+
+    parser = PythonParser()
+    graph = parser.parse([registry_path, module_path], tmp_path)
+
+    assert "pkg.service.run" in graph.entities
+    assert ("pkg.service.run", "pkg.registry.tool", "import") in graph.to_edge_tuples()

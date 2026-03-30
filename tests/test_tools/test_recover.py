@@ -2,6 +2,7 @@
 
 import pytest
 
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 from arcade_agent.tools.recover import recover
 
 
@@ -37,6 +38,81 @@ def test_acdc_recovery(sample_graph):
 
     assert len(arch.components) >= 1
     assert arch.algorithm == "acdc"
+
+
+def test_package_based_recovery_reassigns_thin_facades():
+    graph = DependencyGraph(
+        entities={
+            "com.example.api.facade": Entity(
+                fqn="com.example.api.facade",
+                name="facade",
+                package="com.example.api",
+                file_path="api.py",
+                kind="function",
+                language="python",
+            ),
+            "com.example.api.registry": Entity(
+                fqn="com.example.api.registry",
+                name="registry",
+                package="com.example.api",
+                file_path="api.py",
+                kind="function",
+                language="python",
+            ),
+            "com.example.api.tool": Entity(
+                fqn="com.example.api.tool",
+                name="tool",
+                package="com.example.api",
+                file_path="api.py",
+                kind="function",
+                language="python",
+            ),
+            "com.example.impl.worker": Entity(
+                fqn="com.example.impl.worker",
+                name="worker",
+                package="com.example.impl",
+                file_path="impl.py",
+                kind="function",
+                language="python",
+            ),
+        },
+        edges=[
+            Edge(
+                source="com.example.api.facade",
+                target="com.example.api.tool",
+                relation="import",
+            ),
+            Edge(
+                source="com.example.api.registry",
+                target="com.example.api.tool",
+                relation="import",
+            ),
+            Edge(
+                source="com.example.api.facade",
+                target="com.example.impl.worker",
+                relation="import",
+            )
+        ],
+        packages={
+            "com.example.api": [
+                "com.example.api.facade",
+                "com.example.api.registry",
+                "com.example.api.tool",
+            ],
+            "com.example.impl": ["com.example.impl.worker"],
+        },
+    )
+
+    arch = recover(graph, algorithm="pkg")
+    membership = {
+        entity_fqn: component.name
+        for component in arch.components
+        for entity_fqn in component.entities
+    }
+
+    assert membership["com.example.api.facade"] == membership["com.example.impl.worker"]
+    assert membership["com.example.api.registry"] != membership["com.example.impl.worker"]
+    assert "facade refinement" in arch.rationale
 
 
 def test_unknown_algorithm(sample_graph):

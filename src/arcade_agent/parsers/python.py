@@ -177,9 +177,6 @@ def _extract_referenced_names(node) -> set[str]:
     return types) because they are not runtime dependencies. This ensures that
     edges reflect actual usage, not just structural typing.
     """
-    # Node types that contain type annotations (not runtime references)
-    _ANNOTATION_TYPES = frozenset({"type", "return_type"})
-
     names: set[str] = set()
     stack = [node]
     while stack:

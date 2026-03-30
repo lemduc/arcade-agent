@@ -44,7 +44,10 @@ def _filter_non_architectural_entities(graph: DependencyGraph) -> DependencyGrap
     The repository self-analysis is meant to approximate architectural units, not
     every internal helper. Private Python top-level helper functions inflate
     component size and smell counts without representing stable architectural
-    responsibilities, so exclude them from the self-analysis graph only.
+    responsibilities, and decorator-registration imports such as ``@tool`` or
+    ``@register_parser`` can create misleading coupling across recovered
+    components after facade reassignment. Exclude those from the self-analysis
+    graph only; the underlying parser output remains unchanged.
     """
     kept_entities = {
         fqn: entity
@@ -57,11 +60,24 @@ def _filter_non_architectural_entities(graph: DependencyGraph) -> DependencyGrap
         )
     }
 
-    kept_edges = [
-        edge
-        for edge in graph.edges
-        if edge.source in kept_entities and edge.target in kept_entities
-    ]
+    kept_edges = []
+    registration_helpers = {"tool", "register_parser"}
+    for edge in graph.edges:
+        if edge.source not in kept_entities or edge.target not in kept_entities:
+            continue
+
+        source_entity = kept_entities[edge.source]
+        target_entity = kept_entities[edge.target]
+        if (
+            edge.relation == "import"
+            and source_entity.package
+            and source_entity.package == target_entity.package
+            and target_entity.kind == "function"
+            and target_entity.name in registration_helpers
+        ):
+            continue
+
+        kept_edges.append(edge)
 
     kept_packages: dict[str, list[str]] = {}
     for pkg, fqns in graph.packages.items():
