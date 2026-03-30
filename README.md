@@ -104,21 +104,18 @@ Minimal caller workflow:
 name: Architecture Analysis
 
 on:
-	pull_request:
-	push:
-		branches: [main]
+  pull_request:
+  push:
+    branches: [main]
 
 jobs:
-	architecture:
-		# For tuannx fork validation:
-		uses: tuannx/arcade-agent/.github/workflows/architecture-analysis-reusable.yml@1c49fa08f3692371bd3febbc4631a24e119c3c3c
-		# For upstream after release, use:
-		# uses: lemduc/arcade-agent/.github/workflows/architecture-analysis-reusable.yml@<release-tag>
-		with:
-			source-path: .
-			primary-algorithm: pkg
-			baseline-workflow-id: ci.yml
-		secrets: inherit
+  architecture:
+    uses: lemduc/arcade-agent/.github/workflows/architecture-analysis-reusable.yml@<release-tag-or-commit-sha>
+    with:
+      source-path: .
+      primary-algorithm: pkg
+      baseline-workflow-id: ci.yml
+    secrets: inherit
 ```
 
 Notes:
