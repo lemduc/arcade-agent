@@ -98,19 +98,23 @@ def detect_smells(
             ))
     else:
         # Heuristic: Concern Overload
-        overloads = detect_concern_overload(architecture)
+        overloads = detect_concern_overload(architecture, dep_graph)
         for overload in overloads:
             smells.append(SmellInstance(
                 smell_type=SmellType.CONCERN_OVERLOAD,
                 severity=overload["severity"],
                 affected_components=[overload["component"]],
                 description=(
-                    f"{overload['component']} contains {overload['entity_count']} entities, "
-                    f"suggesting multiple responsibilities."
+                    f"{overload['component']} contains {overload['entity_count']} entities "
+                    f"but only {overload['internal_edges']} internal dependencies "
+                    f"({overload['internal_edges_per_entity']:.2f} per entity), "
+                    "suggesting multiple responsibilities."
                 ),
                 explanation=(
                     "Large components are harder to understand, test, and maintain. "
-                    "They often indicate that multiple concerns have been mixed together."
+                    "When their internals are also sparsely connected, that usually means "
+                    "the component is acting as a bucket for unrelated concerns rather than "
+                    "a cohesive module."
                 ),
                 suggestion=(
                     f"Consider splitting {overload['component']} into smaller, "

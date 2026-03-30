@@ -65,3 +65,14 @@ def test_java_parser_properties():
     parser = JavaParser()
     assert parser.language == "java"
     assert ".java" in parser.file_extensions
+
+
+def test_java_parser_extracts_methods(java_files, fixtures_dir):
+    parser = JavaParser()
+    graph = parser.parse(java_files, fixtures_dir)
+
+    assert "com.example.calc.Calculator.add" in graph.entities
+    assert graph.entities["com.example.calc.Calculator.add"].kind == "method"
+    assert graph.entities["com.example.calc.Calculator.add"].properties["owner"] == (
+        "com.example.calc.Calculator"
+    )

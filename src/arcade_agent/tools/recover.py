@@ -9,6 +9,180 @@ from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.registry import tool
 
 
+def _build_package_groups(
+    dep_graph: DependencyGraph,
+    common: list[str],
+    depth: int,
+) -> dict[str, list[str]]:
+    """Assign entities to groups using package segments after the common prefix."""
+    groups: dict[str, list[str]] = {}
+    for fqn, entity in dep_graph.entities.items():
+        if not entity.package:
+            groups.setdefault("(default)", []).append(fqn)
+            continue
+        parts = entity.package.split(".")
+        remainder = parts[len(common):]
+        if remainder:
+            key = ".".join(remainder[:depth])
+        else:
+            # Package equals common prefix — use FQN to find the right group.
+            # e.g. FQN "arcade_agent.algorithms" -> key "algorithms"
+            fqn_parts = fqn.split(".")
+            fqn_remainder = fqn_parts[len(common):]
+            if fqn_remainder:
+                key = ".".join(fqn_remainder[:depth])
+            else:
+                key = parts[-1] if parts[0] else "(default)"
+        groups.setdefault(key, []).append(fqn)
+    return groups
+
+
+def _entity_group_membership(groups: dict[str, list[str]]) -> dict[str, str]:
+    """Build an entity-to-group index for package groups."""
+    return {
+        entity_fqn: group_key
+        for group_key, entity_fqns in groups.items()
+        for entity_fqn in entity_fqns
+    }
+
+
+def _local_utility_hubs(
+    dep_graph: DependencyGraph,
+    membership: dict[str, str],
+) -> set[str]:
+    """Identify group-local utility entities such as decorators or registries.
+
+    These entities often attract many same-group import edges but do not define a
+    standalone architectural responsibility. They should not stop thin facade
+    entities from joining the subsystem they primarily front.
+    """
+    same_group_incoming: dict[str, int] = {}
+    external_incident: dict[str, int] = {}
+
+    for edge in dep_graph.edges:
+        source_group = membership.get(edge.source)
+        target_group = membership.get(edge.target)
+        if not source_group or not target_group:
+            continue
+        if source_group == target_group:
+            same_group_incoming[edge.target] = same_group_incoming.get(edge.target, 0) + 1
+        else:
+            external_incident[edge.source] = external_incident.get(edge.source, 0) + 1
+            external_incident[edge.target] = external_incident.get(edge.target, 0) + 1
+
+    return {
+        entity_fqn
+        for entity_fqn, incoming_count in same_group_incoming.items()
+        if incoming_count >= 2 and external_incident.get(entity_fqn, 0) == 0
+    }
+
+
+def _refine_facade_groups(
+    dep_graph: DependencyGraph,
+    groups: dict[str, list[str]],
+) -> tuple[dict[str, list[str]], int]:
+    """Move thin facade entities to the single subsystem they front.
+
+    Package-only grouping can overstate architectural coupling when a package
+    mainly exposes adapter functions that delegate straight into one subsystem.
+    This refinement moves an entity only when it has no ties to peers in its
+    current group and all of its known dependencies point outward to one other
+    group. Entities without dependencies or with mixed responsibilities stay put.
+    """
+    membership = _entity_group_membership(groups)
+    utility_hubs = _local_utility_hubs(dep_graph, membership)
+    outgoing_by_entity: dict[str, list[str]] = {fqn: [] for fqn in dep_graph.entities}
+    incoming_by_entity: dict[str, list[str]] = {fqn: [] for fqn in dep_graph.entities}
+
+    for edge in dep_graph.edges:
+        if edge.source in outgoing_by_entity:
+            outgoing_by_entity[edge.source].append(edge.target)
+        if edge.target in incoming_by_entity:
+            incoming_by_entity[edge.target].append(edge.source)
+
+    moves: dict[str, str] = {}
+    for entity_fqn, own_group in membership.items():
+        if len(groups.get(own_group, [])) <= 1:
+            continue
+
+        outgoing_targets = outgoing_by_entity.get(entity_fqn, [])
+        if not outgoing_targets:
+            continue
+
+        incoming_sources = incoming_by_entity.get(entity_fqn, [])
+        own_group_links = 0
+        target_groups: set[str] = set()
+        disqualify = False
+
+        for neighbor in outgoing_targets:
+            neighbor_group = membership.get(neighbor)
+            if not neighbor_group:
+                continue
+            if neighbor_group == own_group:
+                if neighbor in utility_hubs:
+                    continue
+                own_group_links += 1
+                continue
+            target_groups.add(neighbor_group)
+
+        for neighbor in incoming_sources:
+            neighbor_group = membership.get(neighbor)
+            if not neighbor_group:
+                continue
+            if neighbor_group == own_group:
+                if neighbor in utility_hubs:
+                    continue
+                own_group_links += 1
+            else:
+                disqualify = True
+                break
+
+        if disqualify or own_group_links > 0 or len(target_groups) != 1:
+            continue
+
+        moves[entity_fqn] = next(iter(target_groups))
+
+    if not moves:
+        return groups, 0
+
+    refined = {group_key: list(entity_fqns) for group_key, entity_fqns in groups.items()}
+    for entity_fqn, target_group in moves.items():
+        source_group = membership[entity_fqn]
+        refined[source_group].remove(entity_fqn)
+        refined[target_group].append(entity_fqn)
+
+    refined = {
+        group_key: sorted(entity_fqns)
+        for group_key, entity_fqns in refined.items()
+        if entity_fqns
+    }
+    return refined, len(moves)
+
+
+def _groups_to_components(groups: dict[str, list[str]]) -> list[Component]:
+    """Convert grouped entity assignments into uniquely named components."""
+    components = []
+    seen_names: set[str] = set()
+    for key in sorted(groups.keys()):
+        name = _component_name_from_key(key)
+        base_name = name
+        counter = 1
+        while name in seen_names:
+            counter += 1
+            name = f"{base_name}{counter}"
+        seen_names.add(name)
+
+        components.append(
+            Component(
+                name=name,
+                responsibility=f"Entities in {key}",
+                entities=sorted(groups[key]),
+            )
+        )
+
+    return components
+
+
 def _package_based_recovery(
     dep_graph: DependencyGraph,
     depth: int | None = None,
@@ -32,51 +206,21 @@ def _package_based_recovery(
     if depth is None:
         depth = _auto_depth(all_pkgs, common)
 
-    groups: dict[str, list[str]] = {}
-    for fqn, entity in dep_graph.entities.items():
-        if not entity.package:
-            groups.setdefault("(default)", []).append(fqn)
-            continue
-        parts = entity.package.split(".")
-        remainder = parts[len(common):]
-        if remainder:
-            key = ".".join(remainder[:depth])
-        else:
-            # Package equals common prefix — use FQN to find the right group.
-            # e.g. FQN "arcade_agent.algorithms" -> key "algorithms"
-            fqn_parts = fqn.split(".")
-            fqn_remainder = fqn_parts[len(common):]
-            if fqn_remainder:
-                key = ".".join(fqn_remainder[:depth])
-            else:
-                key = parts[-1] if parts[0] else "(default)"
-        groups.setdefault(key, []).append(fqn)
-
-    components = []
-    seen_names: set[str] = set()
-    for key in sorted(groups.keys()):
-        name = _component_name_from_key(key)
-        # Ensure unique names
-        base_name = name
-        counter = 1
-        while name in seen_names:
-            counter += 1
-            name = f"{base_name}{counter}"
-        seen_names.add(name)
-
-        components.append(
-            Component(
-                name=name,
-                responsibility=f"Entities in {key}",
-                entities=sorted(groups[key]),
-            )
-        )
+    groups = _build_package_groups(dep_graph, common, depth)
+    groups, reassigned_count = _refine_facade_groups(dep_graph, groups)
+    components = _groups_to_components(groups)
 
     return Architecture(
         components=components,
         rationale=(
             f"Package-based grouping (depth={depth} "
-            f"after common prefix '{'.'.join(common)}')."
+            f"after common prefix '{'.'.join(common)}')"
+            + (
+                f" with dependency-affinity facade refinement "
+                f"({reassigned_count} entities reassigned)."
+                if reassigned_count
+                else "."
+            )
         ),
         algorithm="pkg",
     )

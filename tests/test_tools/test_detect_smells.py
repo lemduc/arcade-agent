@@ -53,7 +53,7 @@ def test_detect_dependency_cycle():
 
 
 def test_detect_concern_overload():
-    """Create architecture with an overloaded component."""
+    """Create architecture with a large but internally sparse component."""
     entities = {}
     entity_list = []
     for i in range(25):
@@ -75,3 +75,31 @@ def test_detect_concern_overload():
     smells = detect_smells(arch, graph)
     overload_smells = [s for s in smells if s.smell_type == "Concern Overload"]
     assert len(overload_smells) >= 1
+
+
+def test_detect_concern_overload_skips_large_cohesive_component():
+    """Large components with strong internal cohesion should not be flagged."""
+    entities = {}
+    entity_list = []
+    edges = []
+    for i in range(25):
+        fqn = f"pkg.Class{i}"
+        entities[fqn] = Entity(
+            fqn=fqn, name=f"Class{i}", package="pkg",
+            file_path=f"Class{i}.java", kind="class", language="java",
+        )
+        entity_list.append(fqn)
+        if i > 0:
+            edges.append(Edge(source=fqn, target=f"pkg.Class{i-1}", relation="import"))
+
+    graph = DependencyGraph(entities=entities, edges=edges, packages={"pkg": entity_list})
+    arch = Architecture(
+        components=[
+            Component(name="BigComp", responsibility="Cohesive core", entities=entity_list),
+        ],
+        algorithm="test",
+    )
+
+    smells = detect_smells(arch, graph)
+    overload_smells = [s for s in smells if s.smell_type == "Concern Overload"]
+    assert overload_smells == []
