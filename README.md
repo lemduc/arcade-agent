@@ -94,6 +94,43 @@ python examples/basic_analysis.py arcade_core --language java --use-llm
 
 This replaces heuristic smell detection (entity count thresholds, suffix matching) with semantic analysis that identifies *what* concerns each component handles and *why* they are problematic. Set `ARCADE_MOCK=1` to skip LLM calls, or `ARCADE_MODEL=haiku` to use a faster model.
 
+## Reusable GitHub Workflow
+
+This repository exposes a reusable GitHub Actions workflow at `.github/workflows/architecture-analysis-reusable.yml` so other repositories can integrate architecture evaluation with one job.
+
+Current implementation uses **PA1 (dual checkout)**:
+
+- Checkout target repository source code for analysis.
+- Checkout the tooling repository (this repo by default) to access `scripts/run_self_analysis.py`, `scripts/compare_baseline.py`, and related helpers.
+
+Minimal caller workflow:
+
+```yaml
+name: Architecture Analysis
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  architecture:
+    uses: lemduc/arcade-agent/.github/workflows/architecture-analysis-reusable.yml@<release-tag-or-commit-sha>
+    with:
+      source-path: .
+      primary-algorithm: pkg
+      baseline-workflow-id: ci.yml
+      tooling-repository: lemduc/arcade-agent
+      tooling-ref: <release-tag-or-commit-sha>
+    secrets: inherit
+```
+
+Notes:
+
+- `baseline-workflow-id` should match the caller workflow filename where baseline artifacts are produced.
+- Prefer pinning to a release tag or commit SHA instead of `@main`.
+- The reusable workflow already handles PR comment updates, artifact upload, and baseline refresh on `main` pushes.
+
 ## Roadmap
 
 arcade-agent ports and extends the capabilities of the original [ARCADE](https://github.com/usc-softarch/arcade_core) Java workbench. Below is what has been implemented and what remains.
