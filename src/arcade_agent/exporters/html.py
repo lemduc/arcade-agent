@@ -131,16 +131,19 @@ REPORT_TEMPLATE = Template("""\
         </div>
     </div>
 
-    {% if metrics %}
+    {% if metric_groups %}
     <h2 id="metrics">Quality Metrics</h2>
+    {% for group in metric_groups %}
+    <h3>{{ group.title }}</h3>
     <div>
-    {% for metric in metrics %}
+    {% for metric in group.metrics %}
         <div class="metric-card">
             <div class="value">{{ "%.3f"|format(metric.value) }}</div>
             <div class="name">{{ metric.name }}</div>
         </div>
     {% endfor %}
     </div>
+    {% endfor %}
     {% endif %}
 
     <h2 id="diagram">Architecture Diagram</h2>
@@ -252,6 +255,13 @@ def export_html(
     """
     mermaid = build_mermaid_diagram(architecture, dep_graph)
     packages = sorted(dep_graph.packages.items(), key=lambda x: -len(x[1]))
+    metric_groups: list[dict[str, object]] = []
+    grouped_metrics: dict[str, list[MetricResult]] = {}
+    for metric in metrics:
+        group_name = str(metric.details.get("group", "Core ARCADE Metrics"))
+        grouped_metrics.setdefault(group_name, []).append(metric)
+    for title, grouped in grouped_metrics.items():
+        metric_groups.append({"title": title, "metrics": grouped})
 
     html = REPORT_TEMPLATE.render(
         repo_name=repo_name,
@@ -265,7 +275,7 @@ def export_html(
         rationale=architecture.rationale,
         components=architecture.components,
         smells=smells,
-        metrics=metrics,
+        metric_groups=metric_groups,
         packages=packages,
         concerns=concerns or {},
     )

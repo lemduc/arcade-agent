@@ -137,3 +137,55 @@ def test_build_comment_includes_baseline_transition_note_when_provided():
     )
 
     assert "Improvement tracking is temporarily unavailable" in comment
+
+
+def test_build_report_payload_marks_new_derived_metrics_without_fake_zero_baseline():
+    baseline = _snapshot("abc1234", "Core", 1, 1)
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["derived_metrics"] = {
+        "BalancedArchitectureScore": 0.8125,
+        "PrincipleAlignmentScore": 0.7900,
+    }
+
+    report = build_report_payload(current, baseline)
+    metric_rows = {row["name"]: row for row in report["metric_rows"]}
+
+    assert metric_rows["BalancedArchitectureScore"]["baseline"] == "n/a"
+    assert metric_rows["BalancedArchitectureScore"]["delta"] == "new in schema"
+    assert metric_rows["PrincipleAlignmentScore"]["baseline"] == "n/a"
+
+
+def test_build_report_payload_uses_metric_semantics_for_lower_is_better_metrics():
+    baseline = _snapshot("abc1234", "Core", 1, 1)
+    current = _snapshot("def5678", "Core", 1, 1)
+    baseline["metrics"]["InterConnectivity"] = 0.2000
+    current["metrics"]["InterConnectivity"] = 0.1000
+
+    report = build_report_payload(current, baseline)
+    metric_rows = {row["name"]: row for row in report["metric_rows"]}
+
+    assert metric_rows["InterConnectivity"]["delta"] == "-0.1000"
+    assert metric_rows["InterConnectivity"]["delta_class"] == "delta-positive"
+
+
+def test_build_comment_shows_score_drivers_when_available():
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["derived_metrics"] = {
+        "BalancedArchitectureScore": 0.8125,
+        "PrincipleAlignmentScore": 0.7900,
+        "HubBalance": 0.5000,
+    }
+    current["principle_signals"] = {
+        "AcyclicDependencies": 1.0,
+        "HubBalance": 0.5000,
+    }
+    current["score_drivers"] = {
+        "risks": [{"name": "HubBalance", "value": 0.5, "gap_to_ideal": 0.5}],
+        "strengths": [{"name": "AcyclicDependencies", "value": 1.0, "gap_to_ideal": 0.0}],
+    }
+
+    comment = build_comment(current, None)
+
+    assert "### 🎯 Score Drivers" in comment
+    assert "Top Risk Driver" in comment
+    assert "HubBalance" in comment

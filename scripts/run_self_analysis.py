@@ -16,6 +16,7 @@ from pathlib import Path
 # Ensure arcade_agent is importable from src/
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from arcade_agent.algorithms.coupling import compute_balanced_scores
 from arcade_agent.algorithms.smells import SmellInstance
 from arcade_agent.exporters.json import build_component_summary, build_graph_summary
 from arcade_agent.parsers.graph import DependencyGraph
@@ -25,6 +26,9 @@ from arcade_agent.tools.ingest import ingest
 from arcade_agent.tools.parse import parse
 from arcade_agent.tools.recover import recover
 from arcade_agent.tools.visualize import visualize
+
+_SELF_ANALYSIS_PACKAGE = "arcade_agent"
+_SELF_ANALYSIS_PREFIX = f"{_SELF_ANALYSIS_PACKAGE}."
 
 
 def _smell_to_dict(smell: SmellInstance) -> dict:
@@ -49,35 +53,28 @@ def _filter_non_architectural_entities(graph: DependencyGraph) -> DependencyGrap
     components after facade reassignment. Exclude those from the self-analysis
     graph only; the underlying parser output remains unchanged.
     """
+    def is_self_analysis_entity(fqn: str) -> bool:
+        return fqn == _SELF_ANALYSIS_PACKAGE or fqn.startswith(_SELF_ANALYSIS_PREFIX)
+
     kept_entities = {
         fqn: entity
         for fqn, entity in graph.entities.items()
-        if entity.kind != "method"
+        if not (
+            is_self_analysis_entity(fqn)
+            and entity.kind == "method"
+        )
         and not (
-            entity.language == "python"
+            is_self_analysis_entity(fqn)
+            and entity.language == "python"
             and entity.kind == "function"
             and entity.name.startswith("_")
         )
     }
 
-    kept_edges = []
-    registration_helpers = {"tool", "register_parser"}
-    for edge in graph.edges:
-        if edge.source not in kept_entities or edge.target not in kept_entities:
-            continue
-
-        source_entity = kept_entities[edge.source]
-        target_entity = kept_entities[edge.target]
-        if (
-            edge.relation == "import"
-            and source_entity.package
-            and source_entity.package == target_entity.package
-            and target_entity.kind == "function"
-            and target_entity.name in registration_helpers
-        ):
-            continue
-
-        kept_edges.append(edge)
+    kept_edges = [
+        edge for edge in graph.edges
+        if edge.source in kept_entities and edge.target in kept_entities
+    ]
 
     kept_packages: dict[str, list[str]] = {}
     for pkg, fqns in graph.packages.items():
@@ -159,6 +156,12 @@ def main() -> None:
     print("[4/5] Detecting smells and computing metrics...")
     smells = detect_smells(arch, graph)
     metrics = compute_metrics(arch, graph)
+    derived_metrics, principle_signals, score_drivers = compute_balanced_scores(
+        arch,
+        graph,
+        smells,
+        metrics=metrics,
+    )
 
     print("[5/5] Saving results...")
     source_summary = build_graph_summary(raw_graph)
@@ -186,6 +189,9 @@ def main() -> None:
             for c in arch.components
         ],
         "metrics": {m.name: round(m.value, 4) for m in metrics},
+        "derived_metrics": {m.name: round(m.value, 4) for m in derived_metrics},
+        "principle_signals": principle_signals,
+        "score_drivers": score_drivers,
         "smells": [_smell_to_dict(s) for s in smells],
     }
 
@@ -199,7 +205,7 @@ def main() -> None:
         graph,
         arch,
         smells,
-        metrics,
+        metrics + derived_metrics,
         output=args.output_html,
     )
     print(f"  HTML report  → {html_out}")
