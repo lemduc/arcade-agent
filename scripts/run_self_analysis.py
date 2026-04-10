@@ -27,9 +27,6 @@ from arcade_agent.tools.parse import parse
 from arcade_agent.tools.recover import recover
 from arcade_agent.tools.visualize import visualize
 
-_SELF_ANALYSIS_PACKAGE = "arcade_agent"
-_SELF_ANALYSIS_PREFIX = f"{_SELF_ANALYSIS_PACKAGE}."
-
 
 def _smell_to_dict(smell: SmellInstance) -> dict:
     """Serialize a SmellInstance to a plain dict."""
@@ -53,28 +50,35 @@ def _filter_non_architectural_entities(graph: DependencyGraph) -> DependencyGrap
     components after facade reassignment. Exclude those from the self-analysis
     graph only; the underlying parser output remains unchanged.
     """
-    def is_self_analysis_entity(fqn: str) -> bool:
-        return fqn == _SELF_ANALYSIS_PACKAGE or fqn.startswith(_SELF_ANALYSIS_PREFIX)
-
     kept_entities = {
         fqn: entity
         for fqn, entity in graph.entities.items()
-        if not (
-            is_self_analysis_entity(fqn)
-            and entity.kind == "method"
-        )
+        if entity.kind != "method"
         and not (
-            is_self_analysis_entity(fqn)
-            and entity.language == "python"
+            entity.language == "python"
             and entity.kind == "function"
             and entity.name.startswith("_")
         )
     }
 
-    kept_edges = [
-        edge for edge in graph.edges
-        if edge.source in kept_entities and edge.target in kept_entities
-    ]
+    kept_edges = []
+    registration_helpers = {"tool", "register_parser"}
+    for edge in graph.edges:
+        if edge.source not in kept_entities or edge.target not in kept_entities:
+            continue
+
+        source_entity = kept_entities[edge.source]
+        target_entity = kept_entities[edge.target]
+        if (
+            edge.relation == "import"
+            and source_entity.package
+            and source_entity.package == target_entity.package
+            and target_entity.kind == "function"
+            and target_entity.name in registration_helpers
+        ):
+            continue
+
+        kept_edges.append(edge)
 
     kept_packages: dict[str, list[str]] = {}
     for pkg, fqns in graph.packages.items():

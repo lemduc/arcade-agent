@@ -1,8 +1,5 @@
 """Tests for the arch_diff script."""
 
-import importlib.util
-from pathlib import Path
-
 import pytest
 
 from arcade_agent.models.architecture import Architecture, Component
@@ -11,13 +8,8 @@ from arcade_agent.models.metrics import MetricResult
 from arcade_agent.models.smells import SmellInstance
 from arcade_agent.serialization import load_architecture, save_architecture
 
-_ARCH_DIFF_PATH = Path(__file__).resolve().parents[1] / "scripts" / "arch_diff.py"
-_ARCH_DIFF_SPEC = importlib.util.spec_from_file_location("arch_diff", _ARCH_DIFF_PATH)
-assert _ARCH_DIFF_SPEC and _ARCH_DIFF_SPEC.loader
-_ARCH_DIFF_MODULE = importlib.util.module_from_spec(_ARCH_DIFF_SPEC)
-_ARCH_DIFF_SPEC.loader.exec_module(_ARCH_DIFF_MODULE)
-build_report = _ARCH_DIFF_MODULE.build_report
-main = _ARCH_DIFF_MODULE.main
+# Import after arcade_agent so modules are available
+from scripts.arch_diff import build_report, main
 
 
 @pytest.fixture

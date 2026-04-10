@@ -26,9 +26,8 @@ PRINCIPLE_SIGNAL_WEIGHTS = {
     "InterfaceSegregation": 0.12,
     "ComponentBalance": 0.10,
     "HubBalance": 0.10,
-    "BoundaryClarity": 0.08,
-    "DependencyDistribution": 0.05,
-    "SmellDiscipline": 0.05,
+    "BoundaryClarity": 0.10,
+    "DependencyDistribution": 0.08,
 }
 
 BALANCED_SCORE_WEIGHTS = {
@@ -423,6 +422,10 @@ def compute_balanced_scores(
     quality. These derived scores make the result easier to interpret by mixing
     in modern architecture signals such as layering health, balance, and smell
     discipline while preserving higher-is-better semantics.
+
+    The weights below are explicit expert-judgment defaults chosen for
+    interpretability. They are intentionally reviewable and tuneable, but they
+    should not be described as benchmark-calibrated or empirically validated.
     """
     if metrics is None:
         metrics = compute_all_metrics(architecture, dep_graph)
