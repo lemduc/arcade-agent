@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from arcade_agent.models.architecture import Architecture, Component
+from arcade_agent.algorithms.architecture import Architecture, Component
 
 
 def save_architecture(arch: Architecture, path: Path) -> None:
