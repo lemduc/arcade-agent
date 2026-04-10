@@ -40,13 +40,12 @@ def _delta_with_impact(metric_name: str, new: float, old: float) -> str:
         return "⚪ **→ (no change)**"
 
     arrow = "↑" if diff > 0 else "↓"
-    better_when_higher = {"RCI", "TurboMQ", "BasicMQ"}
-    better_when_lower = {"InterConnectivity", "TwoWayPairRatio"}
     low_impact = {"📦 Components", "🧩 Entities", "🔗 Edges", "IntraConnectivity"}
+    better_when_higher, better_when_lower = _metric_semantics(metric_name)
 
-    if metric_name in better_when_higher:
+    if better_when_higher:
         icon = "🟢" if diff > 0 else "🔴"
-    elif metric_name in better_when_lower:
+    elif better_when_lower:
         icon = "🟢" if diff < 0 else "🔴"
     elif metric_name in low_impact:
         icon = "🟡"
@@ -69,9 +68,11 @@ def _rci_icon(rci: float) -> str:
 
 
 def _quality_label(rci: float) -> str:
-    if rci >= 0.8:
+    if rci >= 0.85:
+        return "Excellent"
+    if rci >= 0.7:
         return "Good"
-    if rci >= 0.6:
+    if rci >= 0.55:
         return "Fair"
     return "Poor"
 
@@ -91,6 +92,66 @@ def _delta_class(new: float, old: float) -> str:
     if abs(diff) < 0.0001:
         return "delta-neutral"
     return "delta-positive" if diff > 0 else "delta-negative"
+
+
+def _metric_semantics(metric_name: str) -> tuple[bool, bool]:
+    """Return whether higher or lower values indicate better quality."""
+    better_when_higher = {
+        "RCI",
+        "TurboMQ",
+        "BasicMQ",
+        "DependencyHealth",
+        "ComponentBalance",
+        "HubBalance",
+        "BoundaryClarity",
+        "DependencyDistribution",
+        "SmellDiscipline",
+        "PrincipleAlignmentScore",
+        "BalancedArchitectureScore",
+    }
+    better_when_lower = {"InterConnectivity", "TwoWayPairRatio"}
+    return metric_name in better_when_higher, metric_name in better_when_lower
+
+
+def _metric_delta_class(metric_name: str, new: float, old: float) -> str:
+    """Assign delta classes using metric quality semantics."""
+    diff = new - old
+    if abs(diff) < 0.0001:
+        return "delta-neutral"
+
+    better_when_higher, better_when_lower = _metric_semantics(metric_name)
+    if better_when_lower:
+        return "delta-positive" if diff < 0 else "delta-negative"
+    if better_when_higher:
+        return "delta-positive" if diff > 0 else "delta-negative"
+    return _delta_class(new, old)
+
+
+def _all_metric_values(snapshot: dict | None) -> dict[str, float]:
+    """Merge core and derived metrics from a stored snapshot."""
+    if not snapshot:
+        return {}
+
+    merged = dict(snapshot.get("metrics", {}))
+    merged.update(snapshot.get("derived_metrics", {}))
+    return merged
+
+
+def _quality_snapshot_score(snapshot: dict | None) -> float:
+    """Prefer balanced architecture score when available."""
+    metrics = _all_metric_values(snapshot)
+    return metrics.get("BalancedArchitectureScore", metrics.get("RCI", 0.0))
+
+
+def _score_driver_lines(drivers: list[dict], prefix: str) -> list[str]:
+    """Format score driver entries for Markdown output."""
+    lines: list[str] = []
+    for item in drivers:
+        lines.append(
+            f"- **{item['name']}**: {prefix}{float(item['gap_to_ideal']):.4f} "
+            f"(signal={float(item['value']):.4f})"
+        )
+    return lines
 
 
 def _summary_stat_values(
@@ -352,8 +413,8 @@ def _dependency_set(data: dict | None) -> set[tuple[str, str]]:
 
 def _build_metric_rows(current: dict, baseline: dict | None) -> list[dict]:
     metric_rows = []
-    baseline_metrics = baseline.get("metrics", {}) if baseline else {}
-    current_metrics = current.get("metrics", {})
+    baseline_metrics = _all_metric_values(baseline)
+    current_metrics = _all_metric_values(current)
     summary_rows = [
         ("Components",) + _summary_stat_values(current, baseline, "num_components"),
         ("Analysis Entities",) + _summary_stat_values(current, baseline, "num_entities"),
@@ -377,14 +438,24 @@ def _build_metric_rows(current: dict, baseline: dict | None) -> list[dict]:
 
     metric_names = sorted(set(baseline_metrics) | set(current_metrics))
     for name in metric_names:
-        old = baseline_metrics.get(name, 0.0)
         new = current_metrics.get(name, 0.0)
+        if name not in baseline_metrics and baseline:
+            metric_rows.append({
+                "name": name,
+                "baseline": "n/a",
+                "current": f"{new:.4f}",
+                "delta": "new in schema",
+                "delta_class": "delta-neutral",
+            })
+            continue
+
+        old = baseline_metrics.get(name, 0.0)
         metric_rows.append({
             "name": name,
             "baseline": f"{old:.4f}",
             "current": f"{new:.4f}",
             "delta": _numeric_delta(new, old),
-            "delta_class": _delta_class(new, old),
+            "delta_class": _metric_delta_class(name, new, old),
         })
 
     return metric_rows
@@ -528,8 +599,10 @@ def build_report_payload(
     current = _normalize_snapshot(current)
     a2a_result = _run_a2a_comparison(baseline, current) if baseline else None
     repo_name = current.get("repo_name") or (baseline or {}).get("repo_name") or "repository"
+    quality_score = _quality_snapshot_score(current)
     overview_cards = [
         {"label": "Current Components", "value": current.get("num_components", 0)},
+        {"label": "Balanced Score", "value": f"{quality_score:.4f}"},
         {"label": "Current Classes", "value": current.get("class_count", 0)},
         {"label": "Current Methods", "value": current.get("method_count", 0)},
         {
@@ -557,11 +630,13 @@ def _write_step_summary(path: Path, report: dict) -> None:
     """Write a compact unified GitHub step summary."""
     current = report["current"]
     baseline = report.get("baseline")
-    current_metrics = current.get("metrics", {})
+    current_metrics = _all_metric_values(current)
+    quality_score = _quality_snapshot_score(current)
     current_rci = current_metrics.get("RCI", 0.0)
     current_tmq = current_metrics.get("TurboMQ", 0.0)
-    rci_icon = _rci_icon(current_rci)
-    quality_label = _quality_label(current_rci)
+    principle_score = current_metrics.get("PrincipleAlignmentScore", 0.0)
+    quality_icon = _rci_icon(quality_score)
+    quality_label = _quality_label(quality_score)
     lines = [
         "## 🏛️ Architecture Summary\n",
         "| Metric | Value |",
@@ -570,7 +645,9 @@ def _write_step_summary(path: Path, report: dict) -> None:
         f"| 🧩 Analysis Entities | {current.get('num_entities', 0)} |",
         f"| 🏷️ Classes | {current.get('class_count', 0)} |",
         f"| 🔧 Methods | {current.get('method_count', 0)} |",
-        f"| RCI {rci_icon} | {current_rci:.4f} ({quality_label}) |",
+        f"| Balanced Score {quality_icon} | {quality_score:.4f} ({quality_label}) |",
+        f"| Principle Alignment | {principle_score:.4f} |",
+        f"| RCI | {current_rci:.4f} |",
         f"| TurboMQ | {current_tmq:.4f} |",
     ]
 
@@ -700,14 +777,15 @@ def build_comment(
     )
     current = report["current"]
     baseline = report.get("baseline")
-    cur_metrics = current.get("metrics", {})
+    cur_metrics = _all_metric_values(current)
     cur_smells = current.get("smells", [])
     cur_components = current.get("components", [])
     cur_rci = cur_metrics.get("RCI", 0.0)
     cur_tmq = cur_metrics.get("TurboMQ", 0.0)
-
-    rci_icon = _rci_icon(cur_rci)
-    quality_label = _quality_label(cur_rci)
+    cur_quality_score = _quality_snapshot_score(current)
+    cur_principle_score = cur_metrics.get("PrincipleAlignmentScore", 0.0)
+    quality_icon = _rci_icon(cur_quality_score)
+    quality_label = _quality_label(cur_quality_score)
 
     lines.append("## 🤖 Architecture Analysis Summary\n")
     lines.append(
@@ -721,9 +799,10 @@ def build_comment(
 
     # -- Metric evolution quick view (top) -------------------------------------
     if baseline:
-        bl_metrics = baseline.get("metrics", {})
+        bl_metrics = _all_metric_values(baseline)
         bl_rci = bl_metrics.get("RCI", 0.0)
         bl_tmq = bl_metrics.get("TurboMQ", 0.0)
+        bl_quality_score = _quality_snapshot_score(baseline)
         bl_commit = baseline.get("commit_sha", "unknown")[:7]
         bl_components = baseline.get("num_components", 0)
         cur_components_count = current.get("num_components", 0)
@@ -737,6 +816,15 @@ def build_comment(
         lines.append("_Legend: 🟢 better · 🔴 worse · 🟡 low impact · ⚪ no change_\n")
         lines.append("| Metric | Baseline | Current | Change |")
         lines.append("|--------|----------|---------|--------|")
+        balanced_delta = _delta_with_impact(
+            "BalancedArchitectureScore",
+            cur_quality_score,
+            bl_quality_score,
+        )
+        lines.append(
+            f"| BalancedArchitectureScore | {bl_quality_score:.4f} | {cur_quality_score:.4f} "
+            f"| {balanced_delta} |"
+        )
         lines.append(
             f"| 📦 Components | {bl_components} "
             f"| {cur_components_count} "
@@ -801,7 +889,7 @@ def build_comment(
             f"| {_delta_with_impact('TurboMQ', cur_tmq, bl_tmq)} |"
         )
         for name in bl_metrics:
-            if name not in ("RCI", "TurboMQ"):
+            if name not in ("RCI", "TurboMQ", "BalancedArchitectureScore"):
                 bl_v = bl_metrics.get(name, 0.0)
                 cur_v = cur_metrics.get(name, 0.0)
                 lines.append(
@@ -820,12 +908,38 @@ def build_comment(
     lines.append(f"| 🏷️ Classes | **{current.get('class_count', 0)}** |")
     lines.append(f"| ƒ Functions | **{current.get('function_count', 0)}** |")
     lines.append(f"| 🔧 Methods | **{current.get('method_count', 0)}** |")
-    lines.append(f"| RCI {rci_icon} | **{cur_rci:.4f}** ({quality_label}) |")
+    lines.append(
+        f"| Balanced Score {quality_icon} | **{cur_quality_score:.4f}** ({quality_label}) |"
+    )
+    lines.append(f"| Principle Alignment | **{cur_principle_score:.4f}** |")
+    lines.append(f"| RCI | **{cur_rci:.4f}** |")
     lines.append(f"| TurboMQ | **{cur_tmq:.4f}** |")
     for name, val in cur_metrics.items():
-        if name not in ("RCI", "TurboMQ"):
+        if name not in ("RCI", "TurboMQ", "BalancedArchitectureScore", "PrincipleAlignmentScore"):
             lines.append(f"| {name} | {val:.4f} |")
     lines.append("")
+
+    principle_signals = current.get("principle_signals", {})
+    if principle_signals:
+        lines.append("### 🧭 Principle Signals\n")
+        lines.append("| Signal | Value |")
+        lines.append("|--------|-------|")
+        for name, value in principle_signals.items():
+            lines.append(f"| {name} | {value:.4f} |")
+        lines.append("")
+    score_drivers = current.get("score_drivers", {})
+    if score_drivers:
+        lines.append("### 🎯 Score Drivers\n")
+        risk_lines = _score_driver_lines(score_drivers.get("risks", []), "gap=")
+        strength_lines = _score_driver_lines(score_drivers.get("strengths", []), "headroom=")
+        if risk_lines:
+            lines.append("**Biggest risks**")
+            lines.extend(risk_lines)
+            lines.append("")
+        if strength_lines:
+            lines.append("**Strongest areas**")
+            lines.extend(strength_lines)
+            lines.append("")
 
     lines.append("### 🕸️ High-Level Design\n")
     lines.append("```mermaid")
@@ -868,7 +982,7 @@ def build_comment(
 
     # -- Evolution (before/after) ------------------------------------------------
     if baseline:
-        bl_metrics = baseline.get("metrics", {})
+        bl_metrics = _all_metric_values(baseline)
         bl_rci = bl_metrics.get("RCI", 0.0)
         bl_tmq = bl_metrics.get("TurboMQ", 0.0)
         bl_smells = baseline.get("smells", [])
@@ -976,14 +1090,27 @@ def build_comment(
 
     # -- CI/CD Insights ----------------------------------------------------------
     lines.append("### 💡 CI/CD Insights\n")
-    lines.append(f"- **Quality Score**: {rci_icon} {quality_label} (RCI={cur_rci:.4f})")
+    lines.append(
+        f"- **Quality Score**: {quality_icon} {quality_label} "
+        f"(BalancedArchitectureScore={cur_quality_score:.4f})"
+    )
+    lines.append(
+        f"- **Principle Alignment**: {cur_principle_score:.4f} "
+        f"(higher means cleaner layering, focus, and boundaries)"
+    )
+    top_risks = current.get("score_drivers", {}).get("risks", [])
+    if top_risks:
+        lines.append(
+            f"- **Top Risk Driver**: {top_risks[0]['name']} "
+            f"(signal={float(top_risks[0]['value']):.4f})"
+        )
 
     if baseline:
-        bl_rci = baseline.get("metrics", {}).get("RCI", 0.0)
-        rci_trend = cur_rci - bl_rci
-        if rci_trend > 0.01:
+        bl_quality_score = _quality_snapshot_score(baseline)
+        quality_trend = cur_quality_score - bl_quality_score
+        if quality_trend > 0.01:
             trend = "📈 Improving modularity"
-        elif rci_trend < -0.01:
+        elif quality_trend < -0.01:
             trend = "📉 Declining cohesion — consider reviewing recent refactoring"
         else:
             trend = "➡️ Stable architectural quality"
@@ -1105,9 +1232,12 @@ def main() -> None:
     print("BEFORE/AFTER COMPARISON SUMMARY")
     print("=" * 60)
     if baseline:
-        bl_metrics = baseline.get("metrics", {})
+        bl_metrics = _all_metric_values(baseline)
+        cur_metrics = _all_metric_values(current)
         bl_rci = bl_metrics.get("RCI", 0.0)
-        cur_rci = current.get("metrics", {}).get("RCI", 0.0)
+        cur_rci = cur_metrics.get("RCI", 0.0)
+        bl_quality_score = _quality_snapshot_score(baseline)
+        cur_quality_score = _quality_snapshot_score(current)
 
         # A2A comparison
         a2a_result = _run_a2a_comparison(baseline, current)
@@ -1155,8 +1285,12 @@ def main() -> None:
         )
         print(
             f"  TurboMQ:     {bl_metrics.get('TurboMQ', 0):.4f} → "
-            f"{current.get('metrics', {}).get('TurboMQ', 0):.4f} "
-            f"{_delta(current.get('metrics', {}).get('TurboMQ', 0), bl_metrics.get('TurboMQ', 0))}"
+            f"{cur_metrics.get('TurboMQ', 0):.4f} "
+            f"{_delta(cur_metrics.get('TurboMQ', 0), bl_metrics.get('TurboMQ', 0))}"
+        )
+        print(
+            f"  Balanced:    {bl_quality_score:.4f} → {cur_quality_score:.4f} "
+            f"{_delta(cur_quality_score, bl_quality_score)}"
         )
         cur_smell_count = len(current.get("smells", []))
         bl_smell_count = len(baseline.get("smells", []))
@@ -1164,11 +1298,13 @@ def main() -> None:
 
     else:
         print("  No baseline available — first run or baseline expired.")
-        cur_rci = current.get("metrics", {}).get("RCI", 0.0)
+        cur_metrics = _all_metric_values(current)
+        cur_rci = cur_metrics.get("RCI", 0.0)
         print(f"  Components:  {current.get('num_components')}")
         print(f"  Entities:    {current.get('num_entities')}")
         print(f"  Classes:     {current.get('class_count', 0)}")
         print(f"  Methods:     {current.get('method_count', 0)}")
+        print(f"  Balanced:    {_quality_snapshot_score(current):.4f}")
         print(f"  RCI:         {cur_rci:.4f}")
     print("=" * 60 + "\n")
 

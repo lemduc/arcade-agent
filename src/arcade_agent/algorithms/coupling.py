@@ -8,11 +8,147 @@ Implements the 7 decay metrics from ARCADE Core:
 - InterConnectivity
 - TwoWayPairRatio
 - ArchitecturalStability (requires two versions)
+
+Also derives balanced architecture scores that combine the core metrics with
+principle-oriented signals such as acyclic dependencies, interface segregation,
+smell discipline, and component balance.
 """
 
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.metrics import MetricResult
+from arcade_agent.algorithms.smells import SmellInstance, SmellType
 from arcade_agent.parsers.graph import DependencyGraph
+
+PRINCIPLE_SIGNAL_WEIGHTS = {
+    "AcyclicDependencies": 0.18,
+    "LayeringHealth": 0.17,
+    "ResponsibilityFocus": 0.15,
+    "InterfaceSegregation": 0.12,
+    "ComponentBalance": 0.10,
+    "HubBalance": 0.10,
+    "BoundaryClarity": 0.10,
+    "DependencyDistribution": 0.08,
+}
+
+BALANCED_SCORE_WEIGHTS = {
+    "cohesion_family": 0.50,
+    "principle_alignment": 0.35,
+    "smell_discipline": 0.15,
+}
+
+
+def _clamp(value: float) -> float:
+    """Clamp a floating-point score to the [0, 1] range."""
+    return max(0.0, min(1.0, value))
+
+
+def _round_score(value: float) -> float:
+    """Clamp and round a score for stable reporting."""
+    return round(_clamp(value), 4)
+
+
+def _gini_coefficient(values: list[int]) -> float:
+    """Compute the Gini coefficient for positive component sizes."""
+    if not values:
+        return 0.0
+
+    sorted_values = sorted(values)
+    total = sum(sorted_values)
+    if total <= 0:
+        return 0.0
+
+    weighted_sum = 0
+    count = len(sorted_values)
+    for index, value in enumerate(sorted_values, start=1):
+        weighted_sum += index * value
+
+    return ((2 * weighted_sum) / (count * total)) - ((count + 1) / count)
+
+
+def _metric_lookup(metrics: list[MetricResult]) -> dict[str, float]:
+    """Build a metric-name lookup."""
+    return {metric.name: metric.value for metric in metrics}
+
+
+def _severity_weight(severity: str) -> float:
+    """Weight smell severities for derived score calculations."""
+    return {
+        "high": 1.0,
+        "medium": 0.6,
+        "low": 0.3,
+    }.get(severity.lower(), 0.3)
+
+
+def _smell_burden(
+    smells: list[SmellInstance],
+    component_count: int,
+    relevant_types: set[str] | None = None,
+) -> float:
+    """Estimate how much a set of smells should penalize balanced scores."""
+    if component_count <= 0:
+        return 0.0
+
+    burden = 0.0
+    for smell in smells:
+        if relevant_types and smell.smell_type not in relevant_types:
+            continue
+
+        affected_ratio = len(smell.affected_components) / component_count
+        burden += _severity_weight(smell.severity) * affected_ratio
+
+    return _clamp(burden)
+
+
+def _component_dependency_profiles(
+    architecture: Architecture,
+    dep_graph: DependencyGraph,
+) -> dict[str, dict[str, float]]:
+    """Compute component-level fan-in/fan-out profiles and normalized ratios."""
+    dependencies = architecture.component_dependencies(dep_graph)
+    component_names = [component.name for component in architecture.components]
+    others = max(1, len(component_names) - 1)
+    profiles = {
+        name: {"fan_in": 0.0, "fan_out": 0.0, "fan_total": 0.0}
+        for name in component_names
+    }
+
+    for source, target in dependencies:
+        profiles[source]["fan_out"] += 1
+        profiles[target]["fan_in"] += 1
+
+    for values in profiles.values():
+        fan_in = values["fan_in"]
+        fan_out = values["fan_out"]
+        values["fan_total"] = fan_in + fan_out
+        values["fan_in_ratio"] = fan_in / others
+        values["fan_out_ratio"] = fan_out / others
+
+    return profiles
+
+
+def _score_drivers(signals: dict[str, float]) -> dict[str, list[dict[str, float | str]]]:
+    """Return the strongest and weakest quality drivers for reporting."""
+    ordered = sorted(signals.items(), key=lambda item: (item[1], item[0]))
+    risks = [
+        {
+            "name": name,
+            "value": _round_score(value),
+            "gap_to_ideal": _round_score(1.0 - value),
+        }
+        for name, value in ordered[:3]
+    ]
+    strengths = [
+        {
+            "name": name,
+            "value": _round_score(value),
+            "gap_to_ideal": _round_score(1.0 - value),
+        }
+        for name, value in sorted(ordered, key=lambda item: (-item[1], item[0]))[:3]
+    ]
+    return {
+        "risks": risks,
+        "strengths": strengths,
+    }
 
 
 def _build_membership(architecture: Architecture) -> dict[str, str]:
@@ -272,3 +408,190 @@ def compute_all_metrics(
         compute_inter_connectivity(architecture, dep_graph),
         compute_two_way_pair_ratio(architecture, dep_graph),
     ]
+
+
+def compute_balanced_scores(
+    architecture: Architecture,
+    dep_graph: DependencyGraph,
+    smells: list[SmellInstance],
+    metrics: list[MetricResult] | None = None,
+) -> tuple[list[MetricResult], dict[str, float], dict[str, list[dict[str, float | str]]]]:
+    """Compute balanced derived scores on top of the core ARCADE metrics.
+
+    The existing coupling metrics remain the source of truth for raw structural
+    quality. These derived scores make the result easier to interpret by mixing
+    in modern architecture signals such as layering health, balance, and smell
+    discipline while preserving higher-is-better semantics.
+
+    The weights below are explicit expert-judgment defaults chosen for
+    interpretability. They are intentionally reviewable and tuneable, but they
+    should not be described as benchmark-calibrated or empirically validated.
+    """
+    if metrics is None:
+        metrics = compute_all_metrics(architecture, dep_graph)
+
+    metric_map = _metric_lookup(metrics)
+    component_sizes = [len(component.entities) for component in architecture.components]
+    component_count = max(1, len(component_sizes))
+    dependency_profiles = _component_dependency_profiles(architecture, dep_graph)
+    total_dependency_loads = [
+        int(profile["fan_total"])
+        for profile in dependency_profiles.values()
+    ]
+
+    dependency_health = _clamp(
+        0.55 * (1.0 - metric_map.get("InterConnectivity", 0.0))
+        + 0.45 * (1.0 - metric_map.get("TwoWayPairRatio", 0.0))
+    )
+    component_balance = _clamp(1.0 - _gini_coefficient(component_sizes))
+    hub_dominance = max(
+        (
+            max(profile["fan_in_ratio"], profile["fan_out_ratio"])
+            for profile in dependency_profiles.values()
+        ),
+        default=0.0,
+    )
+    boundary_clarity = _clamp(
+        1.0
+        - (
+            sum(
+                min(profile["fan_in_ratio"], profile["fan_out_ratio"])
+                for profile in dependency_profiles.values()
+            )
+            / component_count
+        )
+    )
+    dependency_distribution = _clamp(1.0 - _gini_coefficient(total_dependency_loads))
+
+    cycle_burden = _smell_burden(
+        smells,
+        component_count,
+        {SmellType.DEPENDENCY_CYCLE.value},
+    )
+    responsibility_burden = _smell_burden(
+        smells,
+        component_count,
+        {
+            SmellType.CONCERN_OVERLOAD.value,
+            SmellType.SCATTERED_FUNCTIONALITY.value,
+        },
+    )
+    interface_burden = _smell_burden(
+        smells,
+        component_count,
+        {SmellType.LINK_OVERLOAD.value},
+    )
+    total_smell_burden = _smell_burden(smells, component_count)
+
+    principle_signals = {
+        "AcyclicDependencies": _round_score(1.0 - cycle_burden),
+        "LayeringHealth": _round_score(
+            0.75 * dependency_health + 0.25 * (1.0 - cycle_burden)
+        ),
+        "ResponsibilityFocus": _round_score(1.0 - responsibility_burden),
+        "InterfaceSegregation": _round_score(1.0 - interface_burden),
+        "ComponentBalance": _round_score(component_balance),
+        "HubBalance": _round_score(1.0 - hub_dominance),
+        "BoundaryClarity": _round_score(boundary_clarity),
+        "DependencyDistribution": _round_score(dependency_distribution),
+        "SmellDiscipline": _round_score(1.0 - total_smell_burden),
+    }
+    principle_alignment = _clamp(sum(
+        PRINCIPLE_SIGNAL_WEIGHTS[name] * principle_signals[name]
+        for name in PRINCIPLE_SIGNAL_WEIGHTS
+    ))
+    cohesion_family = _clamp(
+        0.40 * metric_map.get("TurboMQ", 0.0)
+        + 0.35 * metric_map.get("RCI", 0.0)
+        + 0.25 * metric_map.get("BasicMQ", 0.0)
+    )
+    balanced_architecture_score = _clamp(sum(
+        (
+            BALANCED_SCORE_WEIGHTS["cohesion_family"] * cohesion_family,
+            BALANCED_SCORE_WEIGHTS["principle_alignment"] * principle_alignment,
+            BALANCED_SCORE_WEIGHTS["smell_discipline"] * principle_signals["SmellDiscipline"],
+        )
+    ))
+    score_drivers = _score_drivers(principle_signals)
+
+    score_details = {
+        "group": "Balanced / Principle-aligned Scores",
+        "higher_is_better": True,
+    }
+    derived_metrics = [
+        MetricResult(
+            name="DependencyHealth",
+            value=_round_score(dependency_health),
+            details={
+                **score_details,
+                "formula": "0.55*(1-InterConnectivity) + 0.45*(1-TwoWayPairRatio)",
+            },
+        ),
+        MetricResult(
+            name="ComponentBalance",
+            value=_round_score(component_balance),
+            details={
+                **score_details,
+                "formula": "1 - gini(component_sizes)",
+            },
+        ),
+        MetricResult(
+            name="HubBalance",
+            value=principle_signals["HubBalance"],
+            details={
+                **score_details,
+                "formula": "1 - max(max(fan_in_ratio), max(fan_out_ratio))",
+            },
+        ),
+        MetricResult(
+            name="BoundaryClarity",
+            value=principle_signals["BoundaryClarity"],
+            details={
+                **score_details,
+                "formula": "1 - avg(min(fan_in_ratio, fan_out_ratio))",
+            },
+        ),
+        MetricResult(
+            name="DependencyDistribution",
+            value=principle_signals["DependencyDistribution"],
+            details={
+                **score_details,
+                "formula": "1 - gini(component_fan_loads)",
+            },
+        ),
+        MetricResult(
+            name="SmellDiscipline",
+            value=principle_signals["SmellDiscipline"],
+            details={
+                **score_details,
+                "formula": "1 - weighted_smell_burden",
+            },
+        ),
+        MetricResult(
+            name="PrincipleAlignmentScore",
+            value=_round_score(principle_alignment),
+            details={
+                **score_details,
+                "formula": (
+                    "weighted average of principle-oriented normalized signals "
+                    "(see PRINCIPLE_SIGNAL_WEIGHTS)"
+                ),
+                "signals": principle_signals,
+                "weights": PRINCIPLE_SIGNAL_WEIGHTS,
+            },
+        ),
+        MetricResult(
+            name="BalancedArchitectureScore",
+            value=_round_score(balanced_architecture_score),
+            details={
+                **score_details,
+                "formula": (
+                    "0.50*cohesion_family + 0.35*PrincipleAlignmentScore + "
+                    "0.15*SmellDiscipline"
+                ),
+                "weights": BALANCED_SCORE_WEIGHTS,
+            },
+        ),
+    ]
+
+    return derived_metrics, principle_signals, score_drivers

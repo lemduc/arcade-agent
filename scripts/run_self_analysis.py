@@ -16,6 +16,7 @@ from pathlib import Path
 # Ensure arcade_agent is importable from src/
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from arcade_agent.algorithms.coupling import compute_balanced_scores
 from arcade_agent.algorithms.smells import SmellInstance
 from arcade_agent.exporters.json import build_component_summary, build_graph_summary
 from arcade_agent.parsers.graph import DependencyGraph
@@ -159,6 +160,12 @@ def main() -> None:
     print("[4/5] Detecting smells and computing metrics...")
     smells = detect_smells(arch, graph)
     metrics = compute_metrics(arch, graph)
+    derived_metrics, principle_signals, score_drivers = compute_balanced_scores(
+        arch,
+        graph,
+        smells,
+        metrics=metrics,
+    )
 
     print("[5/5] Saving results...")
     source_summary = build_graph_summary(raw_graph)
@@ -186,6 +193,9 @@ def main() -> None:
             for c in arch.components
         ],
         "metrics": {m.name: round(m.value, 4) for m in metrics},
+        "derived_metrics": {m.name: round(m.value, 4) for m in derived_metrics},
+        "principle_signals": principle_signals,
+        "score_drivers": score_drivers,
         "smells": [_smell_to_dict(s) for s in smells],
     }
 
@@ -199,7 +209,7 @@ def main() -> None:
         graph,
         arch,
         smells,
-        metrics,
+        metrics + derived_metrics,
         output=args.output_html,
     )
     print(f"  HTML report  → {html_out}")

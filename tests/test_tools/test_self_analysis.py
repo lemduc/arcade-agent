@@ -1,13 +1,15 @@
 """Tests for repository self-analysis filtering."""
 
+import json
 import sys
-from pathlib import Path
 
 from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from scripts.run_self_analysis import _filter_non_architectural_entities
+from scripts.run_self_analysis import (
+    _filter_non_architectural_entities,
+)
+from scripts.run_self_analysis import (
+    main as run_self_analysis_main,
+)
 
 
 def test_self_analysis_filters_registration_import_edges_only():
@@ -73,3 +75,65 @@ def test_self_analysis_filters_registration_import_edges_only():
         "arcade_agent.algorithms.matching.match_components",
         "import",
     ) in filtered.to_edge_tuples()
+
+
+def test_run_self_analysis_writes_balanced_scores(tmp_path, monkeypatch):
+    project_dir = tmp_path / "sample-app"
+    package_dir = project_dir / "sample_app"
+    package_dir.mkdir(parents=True)
+    (package_dir / "__init__.py").write_text("\n")
+    (package_dir / "registry.py").write_text("def tool(fn):\n    return fn\n")
+    (package_dir / "service.py").write_text(
+        "from sample_app.registry import tool\n\n"
+        "@tool\n"
+        "def run():\n"
+        "    return helper()\n\n"
+        "def helper():\n"
+        "    return 1\n"
+    )
+
+    output_json = tmp_path / "results.json"
+    output_html = tmp_path / "report.html"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_self_analysis.py",
+            "--source",
+            str(project_dir),
+            "--language",
+            "python",
+            "--output-json",
+            str(output_json),
+            "--output-html",
+            str(output_html),
+        ],
+    )
+
+    run_self_analysis_main()
+
+    payload = json.loads(output_json.read_text())
+
+    assert output_html.exists()
+    assert set(payload["derived_metrics"]) == {
+        "DependencyHealth",
+        "ComponentBalance",
+        "HubBalance",
+        "BoundaryClarity",
+        "DependencyDistribution",
+        "SmellDiscipline",
+        "PrincipleAlignmentScore",
+        "BalancedArchitectureScore",
+    }
+    assert set(payload["principle_signals"]) == {
+        "AcyclicDependencies",
+        "LayeringHealth",
+        "ResponsibilityFocus",
+        "InterfaceSegregation",
+        "ComponentBalance",
+        "HubBalance",
+        "BoundaryClarity",
+        "DependencyDistribution",
+        "SmellDiscipline",
+    }
+    assert set(payload["score_drivers"]) == {"risks", "strengths"}
