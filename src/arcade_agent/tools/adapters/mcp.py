@@ -397,6 +397,106 @@ def _build_server():  # type: ignore[no-untyped-def]
         )
         return json.dumps({"output_path": result_path}, indent=2)
 
+    # -- summarize -------------------------------------------------------------
+
+    @server.tool()
+    def summarize(
+        source_path: str,
+        language: str | None = None,
+        focus: str | None = None,
+        use_cache: bool = True,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Summarize a codebase for quick understanding.
+
+        Returns package structure, dependency hotspots, and entry points.
+        Use the focus parameter to drill into a specific package.
+
+        Args:
+            source_path: Root directory of the project.
+            language: Language to parse (auto-detected if None).
+            focus: Package name to drill into (e.g. "com.example.auth").
+            use_cache: Use cached parse results when available.
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.summarize import summarize as _summarize
+
+        result = _summarize(
+            source_path=source_path,
+            language=language,
+            focus=focus,
+            use_cache=use_cache,
+        )
+        serialized = serialize_result(result)
+        return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
+    # -- explain_component -----------------------------------------------------
+
+    @server.tool()
+    def explain_component(
+        architecture: str,
+        dep_graph: str,
+        component: str,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Explain a component from a recovered architecture.
+
+        Shows responsibility, entities, public API surface, dependencies,
+        and cohesion metrics.
+
+        Args:
+            architecture: Session ID from a previous 'recover' call.
+            dep_graph: Session ID from a previous 'parse' call.
+            component: Name of the component to explain.
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.explain_component import explain_component as _explain
+
+        arch_obj = _resolve(architecture, "Architecture")
+        graph_obj = _resolve(dep_graph, "DependencyGraph")
+        result = _explain(
+            architecture=arch_obj,
+            dep_graph=graph_obj,
+            component=component,
+        )
+        serialized = serialize_result(result)
+        return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
+    # -- find_relevant ---------------------------------------------------------
+
+    @server.tool()
+    def find_relevant(
+        dep_graph: str,
+        query: str,
+        architecture: str | None = None,
+        top_k: int = 10,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Find code entities relevant to a natural-language query.
+
+        Searches entity names, packages, and file paths using keyword matching.
+        Optionally uses recovered architecture for component context.
+
+        Args:
+            dep_graph: Session ID from a previous 'parse' call.
+            query: Natural-language query (e.g. "authentication login").
+            architecture: Optional session ID from a previous 'recover' call.
+            top_k: Maximum number of results to return.
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.find_relevant import find_relevant as _find
+
+        graph_obj = _resolve(dep_graph, "DependencyGraph")
+        arch_obj = _resolve(architecture, "Architecture") if architecture else None
+        result = _find(
+            dep_graph=graph_obj,
+            query=query,
+            architecture=arch_obj,
+            top_k=top_k,
+        )
+        serialized = serialize_result(result)
+        return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
     # -- get_full_result -------------------------------------------------------
 
     @server.tool()
