@@ -10,6 +10,9 @@ Provides composable tools for parsing source code, recovering architecture, dete
 
 ```bash
 pip install -e ".[dev]"
+
+# With MCP server support (for AI agent integration)
+pip install -e ".[mcp,dev]"
 ```
 
 ## Quick Start
@@ -84,6 +87,53 @@ python examples/compare_algorithms.py arcade_core --language java --use-llm
 
 See [`examples/comparison_report.html`](https://lemduc.github.io/arcade-agent/examples/comparison_report.html) for the full comparison report.
 
+## MCP Server (AI Agent Integration)
+
+arcade-agent exposes all tools via the [Model Context Protocol](https://modelcontextprotocol.io/) so AI agents (Claude Code, Cursor, etc.) can analyze codebases with minimal token usage.
+
+### Start the server
+
+```bash
+arcade-mcp
+```
+
+### Configure in Claude Code
+
+Add to your Claude Code MCP settings:
+
+```json
+{
+  "mcpServers": {
+    "arcade-agent": {
+      "command": "arcade-mcp"
+    }
+  }
+}
+```
+
+### How it works
+
+1. **Session store** — Tools like `parse` and `recover` return compact summaries with a `session_id`. Pass session IDs to downstream tools instead of full data objects.
+2. **Token budget** — Every tool accepts an optional `max_tokens` parameter. Outputs are progressively truncated (entity details → edge summaries → component counts) to fit.
+3. **Parse caching** — Parsed dependency graphs are cached to `.arcade-cache/` keyed by file modification times. Repeated analysis of the same codebase skips re-parsing.
+4. **On-demand detail** — Call `get_full_result(session_id)` to retrieve complete data when the summary isn't enough.
+
+### Example agent workflow
+
+```
+Agent: call parse(source_path="/path/to/project")
+       → {session_id: "a1b2c3", num_entities: 170, num_edges: 470, ...}
+
+Agent: call recover(dep_graph="a1b2c3", algorithm="pkg")
+       → {session_id: "d4e5f6", num_components: 13, components: [...], ...}
+
+Agent: call detect_smells(architecture="d4e5f6", dep_graph="a1b2c3")
+       → {num_smells: 7, smells: [...]}
+
+Agent: call get_full_result(session_id="a1b2c3", max_tokens=2000)
+       → full graph data, truncated to fit token budget
+```
+
 ## LLM-Powered Analysis
 
 Pass `--use-llm` to enable Claude-powered concern detection. Requires the `claude` CLI installed and authenticated.
@@ -139,7 +189,7 @@ The comment is updated on each push to the PR (not duplicated).
 
 ## Roadmap
 
-arcade-agent ports and extends the capabilities of the original [ARCADE](https://github.com/usc-softarch/arcade_core) Java workbench. Below is what has been implemented and what remains.
+arcade-agent ports and extends the capabilities of the original [ARCADE](https://github.com/usc-softarch/arcade_core) Java workbench, and is evolving into a token-efficient codebase understanding layer for AI agents. See [ROADMAP.md](ROADMAP.md) for the full AI agent integration roadmap.
 
 | Feature | Status | Details |
 |---------|--------|---------|
@@ -150,6 +200,9 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | Multi-language parsing | Done | Java, Python, C/C++ (full), TypeScript (stub) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
+| MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |
+| Token-budget truncation | Done | Progressive output reduction to fit agent context windows |
+| Parse result caching | Done | Mtime-based cache avoids re-parsing unchanged codebases |
 | Multi-version evolution pipeline | Planned | Batch version history analysis, A2A cost trends, CVG over time |
 | Flexible stopping criteria | Planned | `no_orphans`, `size_fraction` strategies for WCA/ARC/LIMBO |
 | Additional similarity measures | Planned | UEMNM (normalized UEM) and InfoLoss |
