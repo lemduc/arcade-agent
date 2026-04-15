@@ -15,10 +15,10 @@ Make tools callable by any MCP-compatible agent (Claude Code, Cursor, etc.)
 
 Give agents maximum understanding per token spent.
 
-- [ ] **5. `summarize` tool** — Given a repo path, return a structured codebase overview: top-level modules, key classes, entry points, dependency hotspots. One call replaces reading dozens of files.
-- [ ] **6. Hierarchical drill-down** — `summarize` returns a tree. Agent can drill into any node (`summarize(path, focus="com.foo.auth")`) for deeper detail without loading everything.
-- [ ] **7. `explain_component` tool** — Given a component from recovered architecture, return: responsibility, key entities, public API surface, who depends on it, who it depends on.
-- [ ] **8. `find_relevant` tool** — Natural-language query ("how does authentication work?") returns ranked list of files/classes/components using recovered architecture + concern tags.
+- [x] **5. `summarize` tool** — Returns structured codebase overview: package tree, dependency hotspots, entry points. One call replaces reading dozens of files.
+- [x] **6. Hierarchical drill-down** — `summarize(focus="com.foo.auth")` drills into a specific package with entities, dependencies in/out, and key files.
+- [x] **7. `explain_component` tool** — Shows responsibility, entities, public API surface, internal-only entities, component dependencies, and cohesion metric.
+- [x] **8. `find_relevant` tool** — Keyword-based search across entity names, packages, and file paths. Architecture-aware boosting via component names and responsibilities.
 
 ## Phase 3 — Change-Aware Context
 
@@ -58,8 +58,7 @@ Work everywhere agents work.
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1, 2, 3, 4 | MCP server + caching + token budget (Phase 1 complete) |
-| **Now** | 5, 6 | Summarize tool + hierarchical drill-down |
-| **Next** | 8, 9, 12, 14 | Killer features — surgical context instead of brute-force file reading |
-| **Then** | 7, 10, 13, 15 | Deepens utility, expands language coverage |
-| **Later** | 11, 16–22 | Scale, polish, ecosystem breadth |
+| **Done** | 1–8 | Phase 1 (MCP server, caching, token budget) + Phase 2 (summaries, drill-down, explain, find) |
+| **Now** | 9, 12, 14 | Change-aware context + smart context selection |
+| **Next** | 10, 13, 15 | Architectural changelog, dependency cone, TypeScript parser |
+| **Then** | 11, 16–22 | Scale, polish, ecosystem breadth |
