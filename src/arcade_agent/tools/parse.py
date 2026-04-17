@@ -1,10 +1,14 @@
 """Tool: Parse source code and extract dependency graph."""
 
+import logging
 from pathlib import Path
 
+from arcade_agent.cache import cache_key, get_cached_graph, put_cached_graph
 from arcade_agent.parsers.base import detect_language, get_parser
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.registry import tool
+
+logger = logging.getLogger(__name__)
 
 
 @tool(
@@ -18,6 +22,7 @@ def parse(
     source_path: str,
     language: str | None = None,
     files: list[str] | None = None,
+    use_cache: bool = True,
 ) -> DependencyGraph:
     """Parse source code and extract a dependency graph.
 
@@ -25,11 +30,19 @@ def parse(
         source_path: Root directory of the project.
         language: Language to parse (java, python, etc.). Auto-detected if None.
         files: Specific files to parse. If None, discovers all files.
+        use_cache: If True, return cached results when source files haven't changed.
 
     Returns:
         DependencyGraph with entities, edges, and package info.
     """
     root = Path(source_path)
+
+    # Check cache before doing expensive parsing
+    if use_cache:
+        key = cache_key(source_path, language, files)
+        cached = get_cached_graph(source_path, key)
+        if cached is not None:
+            return cached
 
     if files:
         file_paths = [Path(f) for f in files]
@@ -57,4 +70,11 @@ def parse(
         raise ValueError("No language specified and auto-detection failed")
 
     parser = get_parser(language)
-    return parser.parse(file_paths, root)
+    graph = parser.parse(file_paths, root)
+
+    # Store in cache for next time
+    if use_cache:
+        key = cache_key(source_path, language, files)
+        put_cached_graph(source_path, key, graph)
+
+    return graph

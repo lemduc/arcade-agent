@@ -1,11 +1,15 @@
 """Tool: Ingest source code for analysis."""
 
+from __future__ import annotations
+
 import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from git import GitCommandError, Repo
+if TYPE_CHECKING:
+    from git import Repo
 
 from arcade_agent.tools.registry import tool
 
@@ -154,7 +158,7 @@ def _discover_files(
     return files
 
 
-def _detect_version(repo: Repo) -> str:
+def _detect_version(repo: "Repo") -> str:
     """Detect the latest version tag from a repo."""
     try:
         tags = sorted(repo.tags, key=lambda t: t.commit.committed_datetime)
@@ -165,7 +169,7 @@ def _detect_version(repo: Repo) -> str:
     return "HEAD"
 
 
-def _detect_versions(repo: Repo) -> list[str]:
+def _detect_versions(repo: "Repo") -> list[str]:
     """Detect all version tags from a repo."""
     try:
         tags = sorted(repo.tags, key=lambda t: t.commit.committed_datetime)
@@ -227,6 +231,7 @@ def _ingest_local(
     versions: list[str] = []
 
     try:
+        from git import Repo
         repo = Repo(path)
         version = _detect_version(repo)
         versions = _detect_versions(repo)
@@ -270,6 +275,7 @@ def _clone_and_ingest(
         work_dir = Path(tempfile.mkdtemp(prefix="arcade_agent_"))
     clone_path = work_dir / name
 
+    from git import GitCommandError, Repo
     repo = Repo.clone_from(url, clone_path, depth=1)
 
     version = _detect_version(repo)

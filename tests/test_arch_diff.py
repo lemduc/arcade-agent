@@ -1,11 +1,11 @@
 """Tests for the arch_diff script."""
 
 import pytest
+
 from arcade_agent.models.architecture import Architecture, Component
 from arcade_agent.models.graph import DependencyGraph, Edge, Entity
 from arcade_agent.models.metrics import MetricResult
 from arcade_agent.models.smells import SmellInstance
-
 from arcade_agent.serialization import load_architecture, save_architecture
 
 # Import after arcade_agent so modules are available
