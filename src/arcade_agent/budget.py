@@ -1,4 +1,9 @@
-"""Token budget truncation for AI-agent-friendly output."""
+"""Token budget truncation for AI-agent-friendly output.
+
+Provides two strategies:
+- ``truncate_result``: domain-aware, progressively reduces graph/architecture dicts.
+- ``enforce_budget``: generic, works on any dict by trimming largest leaf values.
+"""
 
 import json
 from typing import Any
@@ -110,6 +115,53 @@ def truncate_result(data: dict, max_tokens: int) -> dict:
         pkgs = result["graph"]["packages"]
         result["graph"]["num_packages"] = len(pkgs) if isinstance(pkgs, dict) else 0
         del result["graph"]["packages"]
+
+    return result
+
+
+def enforce_budget(data: dict, max_tokens: int) -> dict:
+    """Generic token budget enforcement for any dict.
+
+    Unlike ``truncate_result`` (which targets ``graph``/``architecture`` keys),
+    this function works on *any* dict — including MCP summary dicts that carry
+    ``session_id``, ``num_entities``, etc.
+
+    Strategy: repeatedly find and drop the largest serialisable leaf value until
+    the payload fits within *max_tokens*.  A ``_budget_truncated`` flag is added
+    to the result whenever truncation occurs so callers can detect it.
+
+    Args:
+        data: Any JSON-serialisable dict.
+        max_tokens: Target maximum token count.
+
+    Returns:
+        A (possibly truncated) copy of *data* that fits within the budget.
+    """
+    if estimate_tokens(data) <= max_tokens:
+        return data
+
+    result = _deep_copy(data)
+    result["_budget_truncated"] = True
+
+    # Candidate leaf keys to drop, ordered largest-first
+    def _leaf_size(key: str) -> int:
+        val = result.get(key)
+        if val is None:
+            return 0
+        return len(json.dumps(val, default=str))
+
+    # Keys that must never be dropped (they identify the result)
+    _protected = {"session_id", "type", "_budget_truncated"}
+
+    while estimate_tokens(result) > max_tokens:
+        droppable = [
+            k for k in result
+            if k not in _protected
+        ]
+        if not droppable:
+            break  # nothing left to trim
+        victim = max(droppable, key=_leaf_size)
+        del result[victim]
 
     return result
 

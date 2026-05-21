@@ -7,7 +7,7 @@ import logging
 import uuid
 from typing import Any
 
-from arcade_agent.budget import truncate_result
+from arcade_agent.budget import enforce_budget, truncate_result
 from arcade_agent.serialization import (
     dict_to_architecture,
     dict_to_graph,
@@ -86,10 +86,19 @@ def _make_summary(obj: Any, label: str) -> dict:
 
 
 def _apply_budget(data: Any, max_tokens: int | None) -> Any:
-    """Apply token budget truncation if requested."""
+    """Apply token budget truncation if requested.
+
+    - Dicts with ``graph``/``architecture`` keys are handled by the
+      domain-aware ``truncate_result``.
+    - All other dicts (e.g. MCP summary dicts with ``session_id``) are
+      handled by the generic ``enforce_budget``.
+    - Non-dict values pass through unchanged.
+    """
     if max_tokens is None or not isinstance(data, dict):
         return data
-    return truncate_result(data, max_tokens)
+    if "graph" in data or "architecture" in data:
+        return truncate_result(data, max_tokens)
+    return enforce_budget(data, max_tokens)
 
 
 def _build_server():  # type: ignore[no-untyped-def]
