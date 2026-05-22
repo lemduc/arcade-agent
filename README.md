@@ -56,6 +56,9 @@ visualize(repo.name, repo.version, graph, arch, smells, output="report.html")
 | `compare` | A2A architecture comparison across versions |
 | `visualize` | Generate HTML reports, DOT, Mermaid, JSON, RSF |
 | `query` | Explore recovered architecture interactively |
+| `summarize` | Codebase overview with package tree, hotspots, entry points; drill-down via `focus` |
+| `explain_component` | Component detail: API surface, dependencies, cohesion |
+| `find_relevant` | Find entities relevant to a natural-language query |
 
 ## Supported Languages
 
@@ -203,6 +206,9 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |
 | Token-budget truncation | Done | Progressive output reduction to fit agent context windows |
 | Parse result caching | Done | Mtime-based cache avoids re-parsing unchanged codebases |
+| Codebase summarization | Done | Token-efficient overview with package tree, hotspots, hierarchical drill-down |
+| Component explanation | Done | API surface, dependencies, cohesion metrics for recovered components |
+| Relevance search | Done | Keyword-based entity search with architecture-aware boosting |
 | Multi-version evolution pipeline | Planned | Batch version history analysis, A2A cost trends, CVG over time |
 | Flexible stopping criteria | Planned | `no_orphans`, `size_fraction` strategies for WCA/ARC/LIMBO |
 | Additional similarity measures | Planned | UEMNM (normalized UEM) and InfoLoss |
