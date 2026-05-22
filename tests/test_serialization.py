@@ -1,9 +1,15 @@
-"""Tests for architecture serialization."""
+"""Tests for architecture and graph serialization."""
 
 import pytest
-from arcade_agent.models.architecture import Architecture, Component
 
-from arcade_agent.serialization import load_architecture, save_architecture
+from arcade_agent.models.architecture import Architecture, Component
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
+from arcade_agent.serialization import (
+    load_architecture,
+    load_graph,
+    save_architecture,
+    save_graph,
+)
 
 
 @pytest.fixture
@@ -62,3 +68,65 @@ def test_roundtrip_preserves_metadata(arch, tmp_path):
     assert loaded.metadata == {"depth": 2, "version": "1.0"}
     assert loaded.algorithm == "pkg"
     assert loaded.rationale == "Package-based grouping"
+
+
+# ---------------------------------------------------------------------------
+# DependencyGraph serialization
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def graph():
+    return DependencyGraph(
+        entities={
+            "com.example.Main": Entity(
+                fqn="com.example.Main",
+                name="Main",
+                package="com.example",
+                file_path="Main.java",
+                kind="class",
+                language="java",
+                imports=["com.example.Helper"],
+                superclass=None,
+                interfaces=["Runnable"],
+                properties={"visibility": "public"},
+            ),
+            "com.example.Helper": Entity(
+                fqn="com.example.Helper",
+                name="Helper",
+                package="com.example",
+                file_path="Helper.java",
+                kind="class",
+                language="java",
+            ),
+        },
+        edges=[
+            Edge(source="com.example.Main", target="com.example.Helper", relation="import"),
+        ],
+        packages={"com.example": ["com.example.Main", "com.example.Helper"]},
+    )
+
+
+def test_graph_save_load_roundtrip(graph, tmp_path):
+    path = tmp_path / "graph.json"
+    save_graph(graph, path)
+    loaded = load_graph(path)
+
+    assert loaded.num_entities == graph.num_entities
+    assert loaded.num_edges == graph.num_edges
+    assert set(loaded.entities.keys()) == set(graph.entities.keys())
+
+    main = loaded.entities["com.example.Main"]
+    assert main.name == "Main"
+    assert main.imports == ["com.example.Helper"]
+    assert main.interfaces == ["Runnable"]
+    assert main.properties == {"visibility": "public"}
+
+    assert loaded.edges[0].source == "com.example.Main"
+    assert loaded.edges[0].relation == "import"
+    assert loaded.packages == graph.packages
+
+
+def test_graph_load_nonexistent(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        load_graph(tmp_path / "nonexistent.json")

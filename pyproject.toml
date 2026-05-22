@@ -44,11 +44,17 @@ languages = [
     "tree-sitter-c>=0.23.0",
     "tree-sitter-cpp>=0.23.0",
 ]
+mcp = [
+    "mcp[cli]>=1.0",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.8",
     "mypy>=1.13",
 ]
+
+[project.scripts]
+arcade-mcp = "arcade_agent.tools.adapters.mcp:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -69,4 +75,4 @@ strict = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
