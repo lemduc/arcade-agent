@@ -90,7 +90,12 @@ def _smell_burden(
 
     burden = 0.0
     for smell in smells:
-        if relevant_types and smell.smell_type not in relevant_types:
+        smell_type = (
+            smell.smell_type.value
+            if hasattr(smell.smell_type, "value")
+            else smell.smell_type
+        )
+        if relevant_types and smell_type not in relevant_types:
             continue
 
         affected_ratio = len(smell.affected_components) / component_count
@@ -113,8 +118,10 @@ def _component_dependency_profiles(
     }
 
     for source, target in dependencies:
-        profiles[source]["fan_out"] += 1
-        profiles[target]["fan_in"] += 1
+        if source in profiles:
+            profiles[source]["fan_out"] += 1
+        if target in profiles:
+            profiles[target]["fan_in"] += 1
 
     for values in profiles.values():
         fan_in = values["fan_in"]

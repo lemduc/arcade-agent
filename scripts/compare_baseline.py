@@ -132,15 +132,27 @@ def _all_metric_values(snapshot: dict | None) -> dict[str, float]:
     if not snapshot:
         return {}
 
-    merged = dict(snapshot.get("metrics", {}))
-    merged.update(snapshot.get("derived_metrics", {}))
+    merged = dict(snapshot.get("metrics") or {})
+    merged.update(snapshot.get("derived_metrics") or {})
     return merged
+
+
+def _metric_value(snapshot: dict | None, metric_name: str) -> float | None:
+    """Return a metric only when it exists in the snapshot schema."""
+    return _all_metric_values(snapshot).get(metric_name)
 
 
 def _quality_snapshot_score(snapshot: dict | None) -> float:
     """Prefer balanced architecture score when available."""
     metrics = _all_metric_values(snapshot)
     return metrics.get("BalancedArchitectureScore", metrics.get("RCI", 0.0))
+
+
+def _quality_snapshot_metric_name(snapshot: dict | None) -> str:
+    """Return the score name represented by _quality_snapshot_score."""
+    if _metric_value(snapshot, "BalancedArchitectureScore") is not None:
+        return "BalancedArchitectureScore"
+    return "QualityScore"
 
 
 def _score_driver_lines(drivers: list[dict], prefix: str) -> list[str]:
@@ -434,12 +446,31 @@ def _build_metric_rows(current: dict, baseline: dict | None) -> list[dict]:
     ]
 
     for name, old, new in summary_rows:
-        metric_rows.append(_build_summary_metric_row(name, old, new))
+        if not baseline:
+            metric_rows.append({
+                "name": name,
+                "baseline": "n/a",
+                "current": new,
+                "delta": "n/a",
+                "delta_class": "delta-neutral",
+            })
+        else:
+            metric_rows.append(_build_summary_metric_row(name, old, new))
 
     metric_names = sorted(set(baseline_metrics) | set(current_metrics))
     for name in metric_names:
         new = current_metrics.get(name, 0.0)
-        if name not in baseline_metrics and baseline:
+        if not baseline:
+            metric_rows.append({
+                "name": name,
+                "baseline": "n/a",
+                "current": f"{new:.4f}",
+                "delta": "n/a",
+                "delta_class": "delta-neutral",
+            })
+            continue
+
+        if name not in baseline_metrics:
             metric_rows.append({
                 "name": name,
                 "baseline": "n/a",
@@ -602,7 +633,7 @@ def build_report_payload(
     quality_score = _quality_snapshot_score(current)
     overview_cards = [
         {"label": "Current Components", "value": current.get("num_components", 0)},
-        {"label": "Balanced Score", "value": f"{quality_score:.4f}"},
+        {"label": "Quality Score", "value": f"{quality_score:.4f}"},
         {"label": "Current Classes", "value": current.get("class_count", 0)},
         {"label": "Current Methods", "value": current.get("method_count", 0)},
         {
@@ -645,7 +676,7 @@ def _write_step_summary(path: Path, report: dict) -> None:
         f"| 🧩 Analysis Entities | {current.get('num_entities', 0)} |",
         f"| 🏷️ Classes | {current.get('class_count', 0)} |",
         f"| 🔧 Methods | {current.get('method_count', 0)} |",
-        f"| Balanced Score {quality_icon} | {quality_score:.4f} ({quality_label}) |",
+        f"| Quality Score {quality_icon} | {quality_score:.4f} ({quality_label}) |",
         f"| Principle Alignment | {principle_score:.4f} |",
         f"| RCI | {current_rci:.4f} |",
         f"| TurboMQ | {current_tmq:.4f} |",
@@ -803,6 +834,8 @@ def build_comment(
         bl_rci = bl_metrics.get("RCI", 0.0)
         bl_tmq = bl_metrics.get("TurboMQ", 0.0)
         bl_quality_score = _quality_snapshot_score(baseline)
+        bl_balanced_score = _metric_value(baseline, "BalancedArchitectureScore")
+        cur_balanced_score = _metric_value(current, "BalancedArchitectureScore")
         bl_commit = baseline.get("commit_sha", "unknown")[:7]
         bl_components = baseline.get("num_components", 0)
         cur_components_count = current.get("num_components", 0)
@@ -816,15 +849,22 @@ def build_comment(
         lines.append("_Legend: 🟢 better · 🔴 worse · 🟡 low impact · ⚪ no change_\n")
         lines.append("| Metric | Baseline | Current | Change |")
         lines.append("|--------|----------|---------|--------|")
-        balanced_delta = _delta_with_impact(
-            "BalancedArchitectureScore",
-            cur_quality_score,
-            bl_quality_score,
-        )
-        lines.append(
-            f"| BalancedArchitectureScore | {bl_quality_score:.4f} | {cur_quality_score:.4f} "
-            f"| {balanced_delta} |"
-        )
+        if cur_balanced_score is not None:
+            if bl_balanced_score is None:
+                lines.append(
+                    f"| BalancedArchitectureScore | n/a | {cur_balanced_score:.4f} "
+                    "| ⚪ **new in schema** |"
+                )
+            else:
+                balanced_delta = _delta_with_impact(
+                    "BalancedArchitectureScore",
+                    cur_balanced_score,
+                    bl_balanced_score,
+                )
+                lines.append(
+                    f"| BalancedArchitectureScore | {bl_balanced_score:.4f} "
+                    f"| {cur_balanced_score:.4f} | {balanced_delta} |"
+                )
         lines.append(
             f"| 📦 Components | {bl_components} "
             f"| {cur_components_count} "
@@ -919,7 +959,7 @@ def build_comment(
             lines.append(f"| {name} | {val:.4f} |")
     lines.append("")
 
-    principle_signals = current.get("principle_signals", {})
+    principle_signals = current.get("principle_signals") or {}
     if principle_signals:
         lines.append("### 🧭 Principle Signals\n")
         lines.append("| Signal | Value |")
@@ -927,11 +967,11 @@ def build_comment(
         for name, value in principle_signals.items():
             lines.append(f"| {name} | {value:.4f} |")
         lines.append("")
-    score_drivers = current.get("score_drivers", {})
+    score_drivers = current.get("score_drivers") or {}
     if score_drivers:
         lines.append("### 🎯 Score Drivers\n")
-        risk_lines = _score_driver_lines(score_drivers.get("risks", []), "gap=")
-        strength_lines = _score_driver_lines(score_drivers.get("strengths", []), "headroom=")
+        risk_lines = _score_driver_lines(score_drivers.get("risks") or [], "gap=")
+        strength_lines = _score_driver_lines(score_drivers.get("strengths") or [], "gap=")
         if risk_lines:
             lines.append("**Biggest risks**")
             lines.extend(risk_lines)
@@ -1090,15 +1130,17 @@ def build_comment(
 
     # -- CI/CD Insights ----------------------------------------------------------
     lines.append("### 💡 CI/CD Insights\n")
+    quality_metric_name = _quality_snapshot_metric_name(current)
     lines.append(
         f"- **Quality Score**: {quality_icon} {quality_label} "
-        f"(BalancedArchitectureScore={cur_quality_score:.4f})"
+        f"({quality_metric_name}={cur_quality_score:.4f})"
     )
     lines.append(
         f"- **Principle Alignment**: {cur_principle_score:.4f} "
         f"(higher means cleaner layering, focus, and boundaries)"
     )
-    top_risks = current.get("score_drivers", {}).get("risks", [])
+    score_drivers = current.get("score_drivers") or {}
+    top_risks = score_drivers.get("risks") or []
     if top_risks:
         lines.append(
             f"- **Top Risk Driver**: {top_risks[0]['name']} "

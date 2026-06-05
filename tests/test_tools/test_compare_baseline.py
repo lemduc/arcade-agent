@@ -3,7 +3,10 @@
 import importlib.util
 from pathlib import Path
 
-from arcade_agent.exporters.html import export_evolution_html
+from arcade_agent.exporters.html import export_evolution_html, export_html
+from arcade_agent.models.architecture import Architecture, Component
+from arcade_agent.models.graph import DependencyGraph, Entity
+from arcade_agent.models.metrics import MetricResult
 
 _COMPARE_BASELINE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "compare_baseline.py"
 _COMPARE_BASELINE_SPEC = importlib.util.spec_from_file_location(
@@ -71,6 +74,48 @@ def test_export_evolution_html_writes_report(tmp_path: Path):
     assert "Architecture Evolution Report" in content
     assert "Core" in content
     assert "Methods" in content
+
+
+def test_export_html_metrics_nav_uses_metric_groups(tmp_path: Path):
+    graph = DependencyGraph(
+        entities={
+            "pkg.Core": Entity(
+                fqn="pkg.Core",
+                name="Core",
+                package="pkg",
+                file_path="core.py",
+                kind="class",
+                language="python",
+            )
+        },
+        edges=[],
+        packages={"pkg": ["pkg.Core"]},
+    )
+    architecture = Architecture(
+        components=[
+            Component(name="Core", responsibility="Core", entities=["pkg.Core"])
+        ],
+        algorithm="pkg",
+    )
+    output = tmp_path / "report.html"
+
+    export_html(
+        "sample-repo",
+        "local",
+        graph,
+        architecture,
+        [],
+        [
+            MetricResult(name="RCI", value=0.75),
+            MetricResult(name="BalancedArchitectureScore", value=0.82, details=None),
+        ],
+        output,
+    )
+
+    content = output.read_text()
+    assert '<a href="#metrics">Metrics</a>' in content
+    assert "Quality Metrics" in content
+    assert "BalancedArchitectureScore" in content
 
 
 def test_build_report_payload_derives_names_for_generic_components():
@@ -153,6 +198,52 @@ def test_build_report_payload_marks_new_derived_metrics_without_fake_zero_baseli
     assert metric_rows["BalancedArchitectureScore"]["baseline"] == "n/a"
     assert metric_rows["BalancedArchitectureScore"]["delta"] == "new in schema"
     assert metric_rows["PrincipleAlignmentScore"]["baseline"] == "n/a"
+
+
+def test_build_comment_does_not_label_rci_fallback_as_balanced_score():
+    baseline = _snapshot("abc1234", "Core", 1, 1)
+    baseline["metrics"]["RCI"] = 0.1234
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["derived_metrics"] = {
+        "BalancedArchitectureScore": 0.8125,
+        "PrincipleAlignmentScore": 0.7900,
+    }
+
+    comment = build_comment(current, baseline)
+
+    assert "| BalancedArchitectureScore | n/a | 0.8125 | ⚪ **new in schema** |" in comment
+    assert "| BalancedArchitectureScore | 0.1234 |" not in comment
+
+
+def test_build_comment_uses_quality_label_when_score_falls_back_to_rci():
+    current = _snapshot("def5678", "Core", 1, 1)
+
+    comment = build_comment(current, None)
+
+    assert "QualityScore=0.7000" in comment
+    assert "BalancedArchitectureScore=0.7000" not in comment
+
+
+def test_build_comment_handles_null_score_driver_payload():
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["score_drivers"] = None
+
+    comment = build_comment(current, None)
+
+    assert "Architecture Analysis Summary" in comment
+    assert "Top Risk Driver" not in comment
+
+
+def test_build_report_payload_marks_metrics_without_baseline_as_uncompared():
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["derived_metrics"] = {"BalancedArchitectureScore": 0.8125}
+
+    report = build_report_payload(current, None)
+    metric_rows = {row["name"]: row for row in report["metric_rows"]}
+
+    assert report["overview_cards"][1]["label"] == "Quality Score"
+    assert metric_rows["BalancedArchitectureScore"]["baseline"] == "n/a"
+    assert metric_rows["BalancedArchitectureScore"]["delta"] == "n/a"
 
 
 def test_build_report_payload_uses_metric_semantics_for_lower_is_better_metrics():

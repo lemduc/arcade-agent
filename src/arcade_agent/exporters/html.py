@@ -102,7 +102,7 @@ REPORT_TEMPLATE = Template("""\
     <nav>
         <span class="nav-title">arcade-agent</span>
         <a href="#overview">Overview</a>
-        {% if metrics %}<a href="#metrics">Metrics</a>{% endif %}
+        {% if metric_groups %}<a href="#metrics">Metrics</a>{% endif %}
         <a href="#diagram">Diagram</a>
         <a href="#components">Components</a>
         <a href="#smells">Smells ({{ num_smells }})</a>
@@ -258,7 +258,8 @@ def export_html(
     metric_groups: list[dict[str, object]] = []
     grouped_metrics: dict[str, list[MetricResult]] = {}
     for metric in metrics:
-        group_name = str(metric.details.get("group", "Core ARCADE Metrics"))
+        details = metric.details or {}
+        group_name = str(details.get("group", "Core ARCADE Metrics"))
         grouped_metrics.setdefault(group_name, []).append(metric)
     for title, grouped in grouped_metrics.items():
         metric_groups.append({"title": title, "metrics": grouped})
