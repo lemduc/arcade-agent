@@ -15,6 +15,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  issues: write
 
 jobs:
   # On PR: analyze architecture and post comment
@@ -46,6 +47,7 @@ jobs:
           echo "ARCADE_EOF" >> "$GITHUB_OUTPUT"
 
       - name: Post or update PR comment
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: peter-evans/create-or-update-comment@v4
         with:
           issue-number: ${{ github.event.pull_request.number }}
