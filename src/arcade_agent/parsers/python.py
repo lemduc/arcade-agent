@@ -1,5 +1,6 @@
 """Python parser using tree-sitter."""
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import tree_sitter_python as tspython
@@ -213,6 +214,145 @@ def _should_skip_module_entity(py_file: Path, declarations: list[dict]) -> bool:
     return py_file.name == "__init__.py" and not declarations
 
 
+@dataclass
+class FileFacts:
+    """Pass-1 extraction for a single file — purely local, so it can be cached by
+    file content (see arcade_agent.incremental). Edges are NOT here; they're
+    computed in the global link pass, so they can never go stale."""
+
+    rel_path: str
+    package: str
+    entities: dict[str, Entity] = field(default_factory=dict)   # fqn -> Entity (this file)
+    file_imports: list[dict] = field(default_factory=list)      # shared by entities in the file
+    refs: dict[str, set[str]] = field(default_factory=dict)     # fqn -> referenced names
+
+
+_PARSER: Parser | None = None
+
+
+def _parser() -> Parser:
+    global _PARSER
+    if _PARSER is None:
+        _PARSER = Parser(PYTHON_LANGUAGE)
+    return _PARSER
+
+
+def extract_file(py_file: Path, root: Path) -> FileFacts | None:
+    """Pass 1: extract entities + imports + referenced names from ONE file.
+
+    Depends only on (this file's content, its path relative to root) — no other
+    file — which is exactly what makes it safe to cache per content hash.
+    Returns None for files that contribute no entity (e.g. empty __init__.py).
+    """
+    try:
+        source = py_file.read_bytes()
+        tree = _parser().parse(source)
+    except Exception:
+        return None
+
+    root_node = tree.root_node
+    module_name = _extract_module_name(py_file, root)
+    package = ".".join(module_name.split(".")[:-1]) if "." in module_name else ""
+    rel_path = str(py_file.relative_to(root))
+    file_imports = _extract_imports(root_node)
+
+    classes = _extract_classes(root_node)
+    functions = _extract_functions(root_node)
+    methods = _extract_methods(classes, module_name)
+    all_decls = classes + methods + functions
+
+    if _should_skip_module_entity(py_file, all_decls):
+        return None
+
+    entities: dict[str, Entity] = {}
+    refs_map: dict[str, set[str]] = {}
+
+    if not all_decls:
+        fqn = module_name
+        entities[fqn] = Entity(
+            fqn=fqn, name=module_name.split(".")[-1], package=package,
+            file_path=rel_path, kind="module", language="python",
+            imports=[imp["module"] for imp in file_imports],
+        )
+        refs_map[fqn] = _extract_referenced_names(root_node)
+    else:
+        for decl in all_decls:
+            owner_fqn = decl.get("owner_fqn")
+            if owner_fqn:
+                fqn = f"{owner_fqn}.{decl['name']}"
+            else:
+                fqn = f"{module_name}.{decl['name']}" if module_name else decl["name"]
+            refs = _extract_referenced_names(decl["node"]) if decl.get("node") else set()
+            entities[fqn] = Entity(
+                fqn=fqn, name=decl["name"], package=package, file_path=rel_path,
+                kind=decl["kind"], language="python",
+                imports=[imp["module"] for imp in file_imports],
+                superclass=decl.get("superclass"), interfaces=decl.get("interfaces", []),
+                properties={"owner": owner_fqn} if owner_fqn else {},
+            )
+            refs_map[fqn] = refs
+
+    return FileFacts(rel_path=rel_path, package=package, entities=entities,
+                     file_imports=file_imports, refs=refs_map)
+
+
+def link(facts: list[FileFacts]) -> DependencyGraph:
+    """Pass 2: build the dependency graph from per-file facts.
+
+    Always run in full over the current fact set — cheap (dict lookups) and the
+    single source of edge truth, so edges are always consistent with the current
+    entities and can never be a stale cache entry.
+    """
+    entities: dict[str, Entity] = {}
+    packages: dict[str, list[str]] = {}
+    module_imports: dict[str, list[dict]] = {}
+    entity_refs: dict[str, set[str]] = {}
+
+    for ff in facts:
+        for fqn, ent in ff.entities.items():
+            entities[fqn] = ent
+            packages.setdefault(ff.package, []).append(fqn)
+            module_imports[fqn] = ff.file_imports
+            entity_refs[fqn] = ff.refs.get(fqn, set())
+
+    fqn_index: dict[str, str] = {}
+    for entity in entities.values():
+        fqn_index[entity.name] = entity.fqn
+
+    edges: list[Edge] = []
+    for fqn, entity in entities.items():
+        refs = entity_refs.get(fqn, set())
+        for imp_info in module_imports.get(fqn, []):
+            module = imp_info["module"]
+            names = imp_info["names"]
+            if names:
+                for name in names:
+                    if refs and name not in refs:
+                        continue
+                    target = f"{module}.{name}"
+                    if target in entities:
+                        edges.append(Edge(source=fqn, target=target, relation="import"))
+                    elif name in fqn_index:
+                        edges.append(Edge(source=fqn, target=fqn_index[name], relation="import"))
+            else:
+                if refs and module.split(".")[-1] not in refs:
+                    continue
+                if module in entities:
+                    edges.append(Edge(source=fqn, target=module, relation="import"))
+        if entity.superclass and entity.superclass in fqn_index:
+            edges.append(Edge(source=fqn, target=fqn_index[entity.superclass], relation="extends"))
+
+    seen: set[tuple[str, str, str]] = set()
+    unique_edges: list[Edge] = []
+    for edge in edges:
+        key = (edge.source, edge.target, edge.relation)
+        if key not in seen:
+            seen.add(key)
+            unique_edges.append(edge)
+
+    return DependencyGraph(entities=entities, edges=unique_edges, packages=packages)
+
+
 @register_parser
 class PythonParser(LanguageParser):
     """Python source code parser using tree-sitter."""
@@ -228,6 +368,9 @@ class PythonParser(LanguageParser):
     def parse(self, files: list[Path], root: Path) -> DependencyGraph:
         """Parse Python source files and extract a dependency graph.
 
+        Pass 1 (extract_file) runs per file; Pass 2 (link) builds the graph.
+        Behaviour is identical to the previous single-method implementation.
+
         Args:
             files: List of .py file paths.
             root: Root directory of the project.
@@ -235,124 +378,20 @@ class PythonParser(LanguageParser):
         Returns:
             DependencyGraph with entities, edges, and package info.
         """
-        parser = Parser(PYTHON_LANGUAGE)
-        entities: dict[str, Entity] = {}
-        edges: list[Edge] = []
-        packages: dict[str, list[str]] = {}
-        module_imports: dict[str, list[dict]] = {}  # fqn -> import info
-        entity_refs: dict[str, set[str]] = {}  # fqn -> names referenced in body
+        facts = [ff for ff in (extract_file(f, root) for f in files) if ff is not None]
+        return link(facts)
 
-        # First pass: collect all entities
-        for py_file in files:
-            try:
-                source = py_file.read_bytes()
-                tree = parser.parse(source)
-            except Exception:
-                continue
+    def parse_incremental(self, files: list[Path], root: Path, cache) -> DependencyGraph:
+        """Incremental parse: re-run Pass 1 only for files whose content changed
+        (the rest reuse the cache); Pass 2 always runs in full.
 
-            root_node = tree.root_node
-            module_name = _extract_module_name(py_file, root)
-            package = ".".join(module_name.split(".")[:-1]) if "." in module_name else ""
-            rel_path = str(py_file.relative_to(root))
-            file_imports = _extract_imports(root_node)
-
-            classes = _extract_classes(root_node)
-            functions = _extract_functions(root_node)
-            methods = _extract_methods(classes, module_name)
-
-            all_decls = classes + methods + functions
-
-            if _should_skip_module_entity(py_file, all_decls):
-                continue
-
-            if not all_decls:
-                # Register the module itself as an entity
-                fqn = module_name
-                entity = Entity(
-                    fqn=fqn,
-                    name=module_name.split(".")[-1],
-                    package=package,
-                    file_path=rel_path,
-                    kind="module",
-                    language="python",
-                    imports=[imp["module"] for imp in file_imports],
-                )
-                entities[fqn] = entity
-                packages.setdefault(package, []).append(fqn)
-                module_imports[fqn] = file_imports
-                # Module entities reference everything at file level
-                entity_refs[fqn] = _extract_referenced_names(root_node)
-            else:
-                for decl in all_decls:
-                    owner_fqn = decl.get("owner_fqn")
-                    if owner_fqn:
-                        fqn = f"{owner_fqn}.{decl['name']}"
-                    else:
-                        fqn = f"{module_name}.{decl['name']}" if module_name else decl["name"]
-                    # Extract names actually referenced within this function/class body
-                    refs = _extract_referenced_names(decl["node"]) if decl.get("node") else set()
-                    entity = Entity(
-                        fqn=fqn,
-                        name=decl["name"],
-                        package=package,
-                        file_path=rel_path,
-                        kind=decl["kind"],
-                        language="python",
-                        imports=[imp["module"] for imp in file_imports],
-                        superclass=decl.get("superclass"),
-                        interfaces=decl.get("interfaces", []),
-                        properties={"owner": owner_fqn} if owner_fqn else {},
-                    )
-                    entities[fqn] = entity
-                    packages.setdefault(package, []).append(fqn)
-                    module_imports[fqn] = file_imports
-                    entity_refs[fqn] = refs
-
-        # Build name -> fqn index
-        fqn_index: dict[str, str] = {}
-        for entity in entities.values():
-            fqn_index[entity.name] = entity.fqn
-
-        # Second pass: resolve import edges (only for actually-referenced names)
-        for fqn, entity in entities.items():
-            refs = entity_refs.get(fqn, set())
-            for imp_info in module_imports.get(fqn, []):
-                module = imp_info["module"]
-                names = imp_info["names"]
-
-                if names:
-                    # from module import name1, name2
-                    for name in names:
-                        # Only create edge if the entity actually references this name
-                        if refs and name not in refs:
-                            continue
-                        target = f"{module}.{name}"
-                        if target in entities:
-                            edges.append(Edge(source=fqn, target=target, relation="import"))
-                        elif name in fqn_index:
-                            edges.append(
-                                Edge(source=fqn, target=fqn_index[name], relation="import")
-                            )
-                else:
-                    # import module — only if the module name is referenced
-                    if refs and module.split(".")[-1] not in refs:
-                        continue
-                    if module in entities:
-                        edges.append(Edge(source=fqn, target=module, relation="import"))
-
-            # Inheritance edges
-            if entity.superclass and entity.superclass in fqn_index:
-                edges.append(
-                    Edge(source=fqn, target=fqn_index[entity.superclass], relation="extends")
-                )
-
-        # Deduplicate edges
-        seen: set[tuple[str, str, str]] = set()
-        unique_edges: list[Edge] = []
-        for edge in edges:
-            key = (edge.source, edge.target, edge.relation)
-            if key not in seen:
-                seen.add(key)
-                unique_edges.append(edge)
-
-        return DependencyGraph(entities=entities, edges=unique_edges, packages=packages)
+        Produces a graph identical to parse() — the cache only short-circuits the
+        per-file extraction, never the linking. `cache` is an
+        arcade_agent.incremental.ExtractCache.
+        """
+        facts = []
+        for f in files:
+            ff = cache.get_or_extract(f, root, extract_file)
+            if ff is not None:
+                facts.append(ff)
+        return link(facts)

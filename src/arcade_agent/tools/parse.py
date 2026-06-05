@@ -70,7 +70,17 @@ def parse(
         raise ValueError("No language specified and auto-detection failed")
 
     parser = get_parser(language)
-    graph = parser.parse(file_paths, root)
+
+    # Two cache layers: the whole-graph cache above returns instantly when NOTHING
+    # changed; when some files changed we fall here and parse incrementally —
+    # re-extracting only the changed files (by content hash) and re-linking. Edges
+    # are recomputed every link, so the incremental graph is identical to a full
+    # parse. Parsers that don't support it (or use_cache=False) take the full path.
+    if use_cache and hasattr(parser, "parse_incremental"):
+        from arcade_agent.incremental import ExtractCache
+        graph = parser.parse_incremental(file_paths, root, ExtractCache(root))
+    else:
+        graph = parser.parse(file_paths, root)
 
     # Store in cache for next time
     if use_cache:
