@@ -30,3 +30,6 @@ htmlcov/
 
 # ruff
 .ruff_cache/
+
+# Parse cache (generated)
+.arcade-cache/

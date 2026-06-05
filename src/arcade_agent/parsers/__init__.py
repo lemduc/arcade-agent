@@ -11,6 +11,16 @@ try:
 except ImportError:
     pass
 
+try:
+    import arcade_agent.parsers.typescript  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    import arcade_agent.parsers.go  # noqa: F401
+except ImportError:
+    pass
+
 from arcade_agent.parsers.base import LanguageParser, get_parser
 
 __all__ = ["LanguageParser", "get_parser"]

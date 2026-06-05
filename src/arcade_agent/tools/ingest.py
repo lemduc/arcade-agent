@@ -38,6 +38,7 @@ _LANG_EXTENSIONS: dict[str, list[str]] = {
     "python": [".py"],
     "typescript": [".ts", ".tsx", ".js", ".jsx"],
     "c": [".c", ".h", ".cpp", ".hpp", ".cc", ".cxx"],
+    "go": [".go"],
 }
 
 # Reverse mapping
