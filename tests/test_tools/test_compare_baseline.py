@@ -3,7 +3,10 @@
 import importlib.util
 from pathlib import Path
 
-from arcade_agent.exporters.html import export_evolution_html
+from arcade_agent.exporters.html import export_evolution_html, export_html
+from arcade_agent.models.architecture import Architecture, Component
+from arcade_agent.models.graph import DependencyGraph, Entity
+from arcade_agent.models.metrics import MetricResult
 
 _COMPARE_BASELINE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "compare_baseline.py"
 _COMPARE_BASELINE_SPEC = importlib.util.spec_from_file_location(
@@ -73,6 +76,48 @@ def test_export_evolution_html_writes_report(tmp_path: Path):
     assert "Methods" in content
 
 
+def test_export_html_metrics_nav_uses_metric_groups(tmp_path: Path):
+    graph = DependencyGraph(
+        entities={
+            "pkg.Core": Entity(
+                fqn="pkg.Core",
+                name="Core",
+                package="pkg",
+                file_path="core.py",
+                kind="class",
+                language="python",
+            )
+        },
+        edges=[],
+        packages={"pkg": ["pkg.Core"]},
+    )
+    architecture = Architecture(
+        components=[
+            Component(name="Core", responsibility="Core", entities=["pkg.Core"])
+        ],
+        algorithm="pkg",
+    )
+    output = tmp_path / "report.html"
+
+    export_html(
+        "sample-repo",
+        "local",
+        graph,
+        architecture,
+        [],
+        [
+            MetricResult(name="RCI", value=0.75),
+            MetricResult(name="BalancedArchitectureScore", value=0.82, details=None),
+        ],
+        output,
+    )
+
+    content = output.read_text()
+    assert '<a href="#metrics">Metrics</a>' in content
+    assert "Quality Metrics" in content
+    assert "BalancedArchitectureScore" in content
+
+
 def test_build_report_payload_derives_names_for_generic_components():
     baseline = _snapshot("abc1234", "Repository3", 1, 1)
     baseline["components"][0]["entities"] = [
@@ -137,3 +182,101 @@ def test_build_comment_includes_baseline_transition_note_when_provided():
     )
 
     assert "Improvement tracking is temporarily unavailable" in comment
+
+
+def test_build_report_payload_marks_new_derived_metrics_without_fake_zero_baseline():
+    baseline = _snapshot("abc1234", "Core", 1, 1)
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["derived_metrics"] = {
+        "BalancedArchitectureScore": 0.8125,
+        "PrincipleAlignmentScore": 0.7900,
+    }
+
+    report = build_report_payload(current, baseline)
+    metric_rows = {row["name"]: row for row in report["metric_rows"]}
+
+    assert metric_rows["BalancedArchitectureScore"]["baseline"] == "n/a"
+    assert metric_rows["BalancedArchitectureScore"]["delta"] == "new in schema"
+    assert metric_rows["PrincipleAlignmentScore"]["baseline"] == "n/a"
+
+
+def test_build_comment_does_not_label_rci_fallback_as_balanced_score():
+    baseline = _snapshot("abc1234", "Core", 1, 1)
+    baseline["metrics"]["RCI"] = 0.1234
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["derived_metrics"] = {
+        "BalancedArchitectureScore": 0.8125,
+        "PrincipleAlignmentScore": 0.7900,
+    }
+
+    comment = build_comment(current, baseline)
+
+    assert "| BalancedArchitectureScore | n/a | 0.8125 | ⚪ **new in schema** |" in comment
+    assert "| BalancedArchitectureScore | 0.1234 |" not in comment
+
+
+def test_build_comment_uses_quality_label_when_score_falls_back_to_rci():
+    current = _snapshot("def5678", "Core", 1, 1)
+
+    comment = build_comment(current, None)
+
+    assert "QualityScore=0.7000" in comment
+    assert "BalancedArchitectureScore=0.7000" not in comment
+
+
+def test_build_comment_handles_null_score_driver_payload():
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["score_drivers"] = None
+
+    comment = build_comment(current, None)
+
+    assert "Architecture Analysis Summary" in comment
+    assert "Top Risk Driver" not in comment
+
+
+def test_build_report_payload_marks_metrics_without_baseline_as_uncompared():
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["derived_metrics"] = {"BalancedArchitectureScore": 0.8125}
+
+    report = build_report_payload(current, None)
+    metric_rows = {row["name"]: row for row in report["metric_rows"]}
+
+    assert report["overview_cards"][1]["label"] == "Quality Score"
+    assert metric_rows["BalancedArchitectureScore"]["baseline"] == "n/a"
+    assert metric_rows["BalancedArchitectureScore"]["delta"] == "n/a"
+
+
+def test_build_report_payload_uses_metric_semantics_for_lower_is_better_metrics():
+    baseline = _snapshot("abc1234", "Core", 1, 1)
+    current = _snapshot("def5678", "Core", 1, 1)
+    baseline["metrics"]["InterConnectivity"] = 0.2000
+    current["metrics"]["InterConnectivity"] = 0.1000
+
+    report = build_report_payload(current, baseline)
+    metric_rows = {row["name"]: row for row in report["metric_rows"]}
+
+    assert metric_rows["InterConnectivity"]["delta"] == "-0.1000"
+    assert metric_rows["InterConnectivity"]["delta_class"] == "delta-positive"
+
+
+def test_build_comment_shows_score_drivers_when_available():
+    current = _snapshot("def5678", "Core", 1, 1)
+    current["derived_metrics"] = {
+        "BalancedArchitectureScore": 0.8125,
+        "PrincipleAlignmentScore": 0.7900,
+        "HubBalance": 0.5000,
+    }
+    current["principle_signals"] = {
+        "AcyclicDependencies": 1.0,
+        "HubBalance": 0.5000,
+    }
+    current["score_drivers"] = {
+        "risks": [{"name": "HubBalance", "value": 0.5, "gap_to_ideal": 0.5}],
+        "strengths": [{"name": "AcyclicDependencies", "value": 1.0, "gap_to_ideal": 0.0}],
+    }
+
+    comment = build_comment(current, None)
+
+    assert "### 🎯 Score Drivers" in comment
+    assert "Top Risk Driver" in comment
+    assert "HubBalance" in comment
