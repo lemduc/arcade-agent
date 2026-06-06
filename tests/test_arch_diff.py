@@ -5,7 +5,7 @@ import pytest
 from arcade_agent.models.architecture import Architecture, Component
 from arcade_agent.models.graph import DependencyGraph, Edge, Entity
 from arcade_agent.models.metrics import MetricResult
-from arcade_agent.models.smells import SmellInstance, SmellType
+from arcade_agent.models.smells import SmellInstance
 from arcade_agent.serialization import load_architecture, save_architecture
 
 # Import after arcade_agent so modules are available
@@ -91,24 +91,6 @@ def test_diff_no_baseline(sample_arch, sample_graph, sample_metrics):
     assert "0.75" in report
 
 
-def test_diff_report_includes_balanced_scores(sample_arch, sample_graph, sample_metrics):
-    """Report includes balanced scores in the legacy drift comment surface."""
-    metrics = sample_metrics + [
-        MetricResult(name="BalancedArchitectureScore", value=0.8125),
-        MetricResult(name="PrincipleAlignmentScore", value=0.7900),
-    ]
-
-    report = build_report(
-        current=sample_arch,
-        graph=sample_graph,
-        metrics=metrics,
-        smells=[],
-    )
-
-    assert "BalancedArchitectureScore" in report
-    assert "PrincipleAlignmentScore" in report
-
-
 def test_diff_with_baseline(sample_arch, sample_graph, sample_metrics):
     """Report with baseline includes drift table."""
     drift = {
@@ -161,51 +143,11 @@ def test_diff_with_baseline(sample_arch, sample_graph, sample_metrics):
     assert "No structural changes detected" in report
 
 
-def test_diff_with_baseline_includes_balanced_scores(sample_arch, sample_graph, sample_metrics):
-    """Baseline drift table includes balanced scores when they are computed."""
-    metrics = sample_metrics + [
-        MetricResult(name="BalancedArchitectureScore", value=0.8125),
-        MetricResult(name="PrincipleAlignmentScore", value=0.7900),
-    ]
-    drift = {
-        "overall_similarity": 0.85,
-        "matches": [],
-        "summary": {
-            "total_matches": 0,
-            "components_added": 0,
-            "components_removed": 0,
-            "possible_splits": 0,
-            "possible_merges": 0,
-            "arch_a_components": 2,
-            "arch_b_components": 2,
-        },
-    }
-    baseline = Architecture(
-        components=[
-            Component(name="Calc", responsibility="", entities=["com.example.calc.Calculator"]),
-            Component(name="Util", responsibility="", entities=["com.example.util.MathHelper"]),
-        ],
-        algorithm="pkg",
-    )
-
-    report = build_report(
-        current=sample_arch,
-        graph=sample_graph,
-        metrics=metrics,
-        smells=[],
-        drift=drift,
-        baseline=baseline,
-    )
-
-    assert "BalancedArchitectureScore" in report
-    assert "PrincipleAlignmentScore" in report
-
-
 def test_diff_with_smells(sample_arch, sample_graph, sample_metrics):
     """Report includes smells section when smells are detected."""
     smells = [
         SmellInstance(
-            smell_type=SmellType.DEPENDENCY_CYCLE,
+            smell_type="Dependency Cycle",
             severity="high",
             affected_components=["Calc", "Util"],
         ),
@@ -218,7 +160,6 @@ def test_diff_with_smells(sample_arch, sample_graph, sample_metrics):
     )
     assert "### Smells (1)" in report
     assert "Dependency Cycle" in report
-    assert "SmellType.DEPENDENCY_CYCLE" not in report
     assert "Calc, Util" in report
 
 

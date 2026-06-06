@@ -13,7 +13,6 @@ import argparse
 import sys
 from pathlib import Path
 
-from arcade_agent.algorithms.coupling import compute_balanced_scores
 from arcade_agent.serialization import load_architecture, save_architecture
 from arcade_agent.tools.compare import compare
 from arcade_agent.tools.compute_metrics import compute_metrics
@@ -76,22 +75,12 @@ def build_report(
             f"| Similarity | — | {similarity:.2f} | — |"
         )
 
-        preferred_metrics = (
-            "BalancedArchitectureScore",
-            "PrincipleAlignmentScore",
-            "RCI",
-            "TurboMQ",
-        )
-        displayed_metrics: set[str] = set()
-        for name in preferred_metrics:
+        for name in ("RCI", "TurboMQ"):
             val = metric_map.get(name)
             if val is not None:
-                lines.append(f"| {name} | — | {val:.2f} | — |")
-                displayed_metrics.add(name)
-        for metric in metrics:
-            if metric.name in displayed_metrics:
-                continue
-            lines.append(f"| {metric.name} | — | {metric.value:.2f} | — |")
+                lines.append(
+                    f"| {name} | — | {val:.2f} | — |"
+                )
 
         lines.append("")
 
@@ -154,7 +143,7 @@ def build_report(
         lines.append("")
         for smell in smells:
             affected = ", ".join(smell.affected_components) if smell.affected_components else ""
-            lines.append(f"- {_display_value(smell.smell_type)}: {affected}")
+            lines.append(f"- {smell.smell_type}: {affected}")
         lines.append("")
     else:
         lines.append("### Smells")
@@ -187,11 +176,6 @@ def _delta(val: int | float) -> str:
     if isinstance(val, float):
         return f"+{val:.2f}" if val >= 0 else f"{val:.2f}"
     return f"+{val}" if val >= 0 else str(val)
-
-
-def _display_value(value) -> str:
-    """Display enum-like values without their enum class prefix."""
-    return str(value.value if hasattr(value, "value") else value)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -239,13 +223,6 @@ def main(argv: list[str] | None = None) -> None:
     # 4. Metrics and smells
     metrics = compute_metrics(current, graph)
     smells = detect_smells(current, graph)
-    derived_metrics, _, _ = compute_balanced_scores(
-        current,
-        graph,
-        smells,
-        metrics=metrics,
-    )
-    metrics = metrics + derived_metrics
 
     # 5. Update baseline if requested
     if args.update_baseline:

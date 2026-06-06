@@ -60,41 +60,6 @@ visualize(repo.name, repo.version, graph, arch, smells, output="report.html")
 | `explain_component` | Component detail: API surface, dependencies, cohesion |
 | `find_relevant` | Find entities relevant to a natural-language query |
 
-## Balanced Architecture Score
-
-arcade-agent keeps the original ARCADE-style quality metrics (`RCI`, `TurboMQ`,
-`BasicMQ`, `IntraConnectivity`, `InterConnectivity`, `TwoWayPairRatio`) and adds
-an explainable derived score for reporting:
-
-```text
-BalancedArchitectureScore =
-  0.50 * cohesion_family
-+ 0.35 * PrincipleAlignmentScore
-+ 0.15 * SmellDiscipline
-```
-
-This score is bounded to `[0, 1]` and higher is better. It is intended as a
-readable summary for PR comments and self-analysis reports, not as a replacement
-for the raw metrics. The original metrics are still emitted and shown so teams
-can inspect the underlying cohesion and coupling values.
-
-The balanced score exists because raw cohesion/coupling metrics can be hard to
-interpret in isolation. A change can improve `RCI` while still creating an
-unbalanced component, a dependency hub, or new architecture smells. The derived
-score combines three views:
-
-- **Cohesion family** — existing `RCI`, `TurboMQ`, and `BasicMQ` signals.
-- **Principle alignment** — acyclic dependencies, layering health,
-  responsibility focus, interface segregation, component balance, hub balance,
-  boundary clarity, and dependency distribution.
-- **Smell discipline** — architectural smell burden weighted by severity and
-  affected-component scope.
-
-Reports also include `score_drivers`, which identify the strongest and weakest
-signals behind the score. This makes the result actionable: reviewers can see
-whether a score moved because of dependency concentration, component imbalance,
-smell burden, or another architectural pressure.
-
 ## Supported Languages
 
 - Java (full support)
@@ -219,7 +184,7 @@ python scripts/arch_diff.py --source /path/to/project --language java
 ### PR Comment Format
 
 The action posts a comment with:
-- **Drift table** — component count, similarity score, balanced score, principle alignment, RCI, TurboMQ, and supporting metric deltas
+- **Drift table** — component count, similarity score, RCI, TurboMQ deltas
 - **Changes** — added/removed components, entity movements, splits/merges
 - **Smells** — dependency cycles, concern overload, scattered functionality
 
@@ -234,7 +199,6 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 5 recovery algorithms (PKG, WCA, ACDC, ARC, LIMBO) | Done | Package-based, weighted clustering, pattern-based, LLM concern-based, information-theoretic |
 | 4 smell types (BDC, BCO, SPF, BUO) | Done | Heuristic + LLM-powered detection |
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
-| Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
 | Multi-language parsing | Done | Java, Python, C/C++ (full), TypeScript (stub) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
