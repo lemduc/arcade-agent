@@ -137,3 +137,41 @@ def test_run_self_analysis_writes_balanced_scores(tmp_path, monkeypatch):
         "SmellDiscipline",
     }
     assert set(payload["score_drivers"]) == {"risks", "strengths"}
+
+
+def test_run_self_analysis_keeps_registration_like_helpers_by_default(tmp_path, monkeypatch):
+    project_dir = tmp_path / "sample-app"
+    package_dir = project_dir / "sample_app"
+    package_dir.mkdir(parents=True)
+    (package_dir / "__init__.py").write_text("\n")
+    (package_dir / "registry.py").write_text("def tool(fn):\n    return fn\n")
+    (package_dir / "service.py").write_text(
+        "from sample_app.registry import tool\n\n"
+        "def run():\n"
+        "    return tool\n"
+    )
+
+    output_json = tmp_path / "results.json"
+    output_html = tmp_path / "report.html"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_self_analysis.py",
+            "--source",
+            str(project_dir),
+            "--language",
+            "python",
+            "--output-json",
+            str(output_json),
+            "--output-html",
+            str(output_html),
+        ],
+    )
+
+    run_self_analysis_main()
+
+    payload = json.loads(output_json.read_text())
+
+    assert payload["num_entities"] >= 2
+    assert payload["num_edges"] >= 1

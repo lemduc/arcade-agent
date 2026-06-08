@@ -184,22 +184,69 @@ This replaces heuristic smell detection (entity count thresholds, suffix matchin
 
 ## CI/CD Integration
 
-arcade-agent ships with a GitHub Action that detects architecture drift on every PR — like SonarQube for architecture.
+arcade-agent ships a GitHub Action that detects architecture drift on every PR
+— like SonarQube for architecture. Consumer repositories add a short workflow
+that calls `lemduc/arcade-agent/actions/analyze`, and the action runs released
+arcade-agent tooling from PyPI without checking out this repository's live
+source.
 
 ### How It Works
 
-1. On **pull request**: parses the codebase, recovers architecture (PKG), compares against a stored baseline, and posts a PR comment with a drift report.
-2. On **push to main**: updates the baseline (`.arcade/baseline.json`) so future PRs compare against the latest merged state.
+1. On **pull request**: parses the codebase, recovers architecture (PKG), compares against the latest stored baseline artifact, and posts a PR comment with a drift report.
+2. On **push to the default branch**: stores a fresh baseline artifact so future PRs compare against the latest merged state.
 
-### Setup
+### Recommended Setup
 
-Copy `.github/workflows/arch-drift.yml` into your repository. The workflow auto-detects the language, or you can set it explicitly via the `language` workflow input.
+Create `.github/workflows/arcade-agent-analysis.yml` in the repository you want
+to analyze:
 
 ```yaml
-# .github/workflows/arch-drift.yml is included in the repo — just enable Actions.
+name: Arcade Architecture Analysis
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: lemduc/arcade-agent/actions/analyze@v0.1.1
+        with:
+          arcade-agent-version: latest
 ```
 
-The baseline is stored in `.arcade/baseline.json` and committed to the repo automatically when changes are pushed to `main`.
+Common optional inputs:
+
+```yaml
+      - uses: lemduc/arcade-agent/actions/analyze@v0.1.1
+        with:
+          arcade-agent-version: "0.1.1"
+          source-path: "."
+          language: ""
+          primary-algorithm: pkg
+          run-secondary-analyses: "true"
+          baseline-branch: ""
+```
+
+For reproducible CI, pin `arcade-agent-version` to a released package version
+such as `"0.1.1"` instead of `latest`.
+
+The action stores the baseline as a GitHub Actions artifact on
+successful pushes to the repository default branch and uses that artifact for
+future PR comparisons. To use a different baseline branch, set
+`baseline-branch`.
+
+If you prefer copying a full standalone workflow instead of using an action,
+copy `examples/workflows/arcade-agent-analysis.yml` from this repository. The
+standalone workflow installs `arcade-agent` from PyPI and runs the same packaged
+CLI commands directly.
 
 ### Local Usage
 
@@ -207,13 +254,13 @@ Run the drift detection script locally:
 
 ```bash
 # Analyze without a baseline (first run)
-python scripts/arch_diff.py --source /path/to/project --language java
+arcade-arch-diff --source /path/to/project --language java
 
 # Update the baseline
-python scripts/arch_diff.py --source /path/to/project --language java --update-baseline
+arcade-arch-diff --source /path/to/project --language java --update-baseline
 
 # Compare against existing baseline
-python scripts/arch_diff.py --source /path/to/project --language java
+arcade-arch-diff --source /path/to/project --language java
 ```
 
 ### PR Comment Format

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arcade-agent"
-version = "0.1.0"
+version = "0.1.1"
 description = "Framework-agnostic tool library for software architecture analysis"
 readme = "README.md"
 license = "MIT"
@@ -56,6 +56,10 @@ dev = [
 
 [project.scripts]
 arcade-mcp = "arcade_agent.tools.adapters.mcp:main"
+arcade-self-analysis = "arcade_agent.ci.run_self_analysis:main"
+arcade-compare-baseline = "arcade_agent.ci.compare_baseline:main"
+arcade-log-analysis-summary = "arcade_agent.ci.log_analysis_summary:main"
+arcade-arch-diff = "arcade_agent.ci.arch_diff:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

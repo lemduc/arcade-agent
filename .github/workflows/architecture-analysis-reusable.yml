@@ -8,26 +8,21 @@ on:
         required: false
         type: string
         default: "3.12"
-      install-extras:
-        description: Extras string passed to pip install -e.
+      arcade-agent-version:
+        description: Released arcade-agent package version to install, or "latest".
         required: false
         type: string
-        default: "[dev,languages]"
+        default: "latest"
+      install-extras:
+        description: Extras string appended to the arcade-agent package install.
+        required: false
+        type: string
+        default: "[languages]"
       source-path:
         description: Path to project root for analysis.
         required: false
         type: string
         default: "."
-      tooling-repository:
-        description: Repository containing arcade-agent scripts/workflow tooling.
-        required: false
-        type: string
-        default: "lemduc/arcade-agent"
-      tooling-ref:
-        description: Branch, tag, or commit SHA for tooling repository checkout.
-        required: false
-        type: string
-        default: "main"
       language:
         description: Optional language override (java, python, typescript, c).
         required: false
@@ -43,6 +38,11 @@ on:
         required: false
         type: string
         default: "pkg"
+      filter-non-architectural-helpers:
+        description: Apply arcade-agent self-dogfooding helper filters. Leave false for generic repositories.
+        required: false
+        type: boolean
+        default: false
       run-secondary-analyses:
         description: Whether to run ACDC and exploratory WCA analyses.
         required: false
@@ -69,10 +69,15 @@ on:
         type: number
         default: 30
       baseline-workflow-id:
-        description: Workflow filename used to search successful baseline runs.
+        description: Optional workflow filename or ID used to search successful baseline runs. Blank searches all workflow runs on the baseline branch.
         required: false
         type: string
-        default: "ci.yml"
+        default: ""
+      baseline-branch:
+        description: Branch used for baseline artifacts. Defaults to the repository default branch.
+        required: false
+        type: string
+        default: ""
       baseline-artifact-name:
         description: Artifact name storing baseline JSON.
         required: false
@@ -83,8 +88,8 @@ on:
         required: false
         type: number
         default: 90
-      store-baseline-on-main-push:
-        description: Store baseline artifact on main branch pushes.
+      store-baseline-on-push:
+        description: Store baseline artifact on baseline branch pushes.
         required: false
         type: boolean
         default: true
@@ -97,9 +102,12 @@ on:
 jobs:
   analysis:
     runs-on: ubuntu-latest
+    env:
+      BASELINE_BRANCH: ${{ inputs.baseline-branch || github.event.repository.default_branch }}
     permissions:
       actions: read
       contents: read
+      issues: write
       pull-requests: write
 
     steps:
@@ -109,26 +117,25 @@ jobs:
           path: target-repo
           fetch-depth: 1
 
-      - name: Checkout tooling repository
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ inputs.tooling-repository }}
-          ref: ${{ inputs.tooling-ref }}
-          path: tooling-repo
-          fetch-depth: 1
-
       - name: Set up Python ${{ inputs.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ inputs.python-version }}
 
-      - name: Install dependencies
-        run: pip install -e "tooling-repo${{ inputs.install-extras }}"
+      - name: Install arcade-agent ${{ inputs.arcade-agent-version }}
+        run: |
+          python -m pip install --upgrade pip
+          if [ "${{ inputs.arcade-agent-version }}" = "latest" ]; then
+            python -m pip install "arcade-agent${{ inputs.install-extras }}"
+          else
+            python -m pip install "arcade-agent${{ inputs.install-extras }}==${{ inputs.arcade-agent-version }}"
+          fi
 
       - name: Run primary self-analysis
         run: |
           LANGUAGE_ARGS=""
           REPO_NAME_ARGS=""
+          FILTER_ARGS=""
           ANALYSIS_SOURCE="target-repo/${{ inputs.source-path }}"
           if [ -n "${{ inputs.language }}" ]; then
             LANGUAGE_ARGS="--language ${{ inputs.language }}"
@@ -136,10 +143,14 @@ jobs:
           if [ -n "${{ inputs.repo-name }}" ]; then
             REPO_NAME_ARGS="--repo-name ${{ inputs.repo-name }}"
           fi
-          python tooling-repo/scripts/run_self_analysis.py \
+          if [ "${{ inputs.filter-non-architectural-helpers }}" = "true" ]; then
+            FILTER_ARGS="--filter-non-architectural-helpers"
+          fi
+          arcade-self-analysis \
             --source "$ANALYSIS_SOURCE" \
             $LANGUAGE_ARGS \
             $REPO_NAME_ARGS \
+            $FILTER_ARGS \
             --algorithm "${{ inputs.primary-algorithm }}" \
             --output-json arcade_analysis_results.json \
             --output-html arcade_analysis_report.html
@@ -149,6 +160,7 @@ jobs:
         run: |
           LANGUAGE_ARGS=""
           REPO_NAME_ARGS=""
+          FILTER_ARGS=""
           ANALYSIS_SOURCE="target-repo/${{ inputs.source-path }}"
           if [ -n "${{ inputs.language }}" ]; then
             LANGUAGE_ARGS="--language ${{ inputs.language }}"
@@ -156,32 +168,37 @@ jobs:
           if [ -n "${{ inputs.repo-name }}" ]; then
             REPO_NAME_ARGS="--repo-name ${{ inputs.repo-name }}"
           fi
-          python tooling-repo/scripts/run_self_analysis.py \
+          if [ "${{ inputs.filter-non-architectural-helpers }}" = "true" ]; then
+            FILTER_ARGS="--filter-non-architectural-helpers"
+          fi
+          arcade-self-analysis \
             --source "$ANALYSIS_SOURCE" \
             $LANGUAGE_ARGS \
             $REPO_NAME_ARGS \
+            $FILTER_ARGS \
             --algorithm acdc \
             --output-json arcade_analysis_acdc.json \
             --output-html arcade_analysis_acdc.html
-          python tooling-repo/scripts/run_self_analysis.py \
+          arcade-self-analysis \
             --source "$ANALYSIS_SOURCE" \
             $LANGUAGE_ARGS \
             $REPO_NAME_ARGS \
+            $FILTER_ARGS \
             --algorithm wca \
             --num-clusters "${{ inputs.wca-num-clusters }}" \
             --output-json arcade_analysis_wca.json \
             --output-html arcade_analysis_wca.html
 
       - name: Display primary analysis results
-        run: python tooling-repo/scripts/log_analysis_summary.py arcade_analysis_results.json
+        run: arcade-log-analysis-summary arcade_analysis_results.json
 
       - name: Display secondary analysis results
         if: inputs.run-secondary-analyses
         run: |
           echo "== ACDC =="
-          python tooling-repo/scripts/log_analysis_summary.py arcade_analysis_acdc.json
+          arcade-log-analysis-summary arcade_analysis_acdc.json
           echo "== WCA (exploratory) =="
-          python tooling-repo/scripts/log_analysis_summary.py arcade_analysis_wca.json
+          arcade-log-analysis-summary arcade_analysis_wca.json
 
       - name: Download baseline (if available)
         id: download_baseline
@@ -189,15 +206,21 @@ jobs:
         with:
           script: |
             const fs = require('fs');
+            const baselineWorkflowId = '${{ inputs.baseline-workflow-id }}';
 
-            const runs = await github.rest.actions.listWorkflowRuns({
+            const runQuery = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              workflow_id: '${{ inputs.baseline-workflow-id }}',
-              branch: 'main',
+              branch: '${{ env.BASELINE_BRANCH }}',
               status: 'success',
               per_page: 10,
-            });
+            };
+            const runs = baselineWorkflowId
+              ? await github.rest.actions.listWorkflowRuns({
+                  ...runQuery,
+                  workflow_id: baselineWorkflowId,
+                })
+              : await github.rest.actions.listWorkflowRunsForRepo(runQuery);
 
             for (const run of runs.data.workflow_runs) {
               const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
@@ -245,13 +268,13 @@ jobs:
             if [ "$BASELINE_ALGORITHM" = "$CURRENT_ALGORITHM" ]; then
               BASELINE_ARG="baseline_dir/arcade_analysis_baseline.json"
             else
-              BASELINE_NOTE="Improvement tracking is temporarily unavailable because the stored baseline uses '$BASELINE_ALGORITHM' while the current primary analysis uses '$CURRENT_ALGORITHM'. After the next successful push to main, the baseline will be refreshed and PR improvement deltas will resume."
+              BASELINE_NOTE="Improvement tracking is temporarily unavailable because the stored baseline uses '$BASELINE_ALGORITHM' while the current primary analysis uses '$CURRENT_ALGORITHM'. After the next successful push to ${BASELINE_BRANCH}, the baseline will be refreshed and PR improvement deltas will resume."
               echo "$BASELINE_NOTE"
             fi
           else
-            BASELINE_NOTE="Improvement tracking is unavailable because no baseline artifact was found yet. After the next successful push to main, PR improvement deltas will appear."
+            BASELINE_NOTE="Improvement tracking is unavailable because no baseline artifact was found yet. After the next successful push to ${BASELINE_BRANCH}, PR improvement deltas will appear."
           fi
-          python tooling-repo/scripts/compare_baseline.py \
+          arcade-compare-baseline \
             arcade_analysis_results.json \
             $BASELINE_ARG \
             --output pr_comment.md \
@@ -277,11 +300,11 @@ jobs:
           if-no-files-found: warn
 
       - name: Store baseline artifact
-        if: inputs.store-baseline-on-main-push && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: inputs.store-baseline-on-push && github.ref == format('refs/heads/{0}', env.BASELINE_BRANCH) && github.event_name == 'push'
         run: cp arcade_analysis_results.json arcade_analysis_baseline.json
 
       - name: Upload baseline artifact
-        if: inputs.store-baseline-on-main-push && github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: inputs.store-baseline-on-push && github.ref == format('refs/heads/{0}', env.BASELINE_BRANCH) && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.baseline-artifact-name }}
