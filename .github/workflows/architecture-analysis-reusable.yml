@@ -9,10 +9,10 @@ on:
         type: string
         default: "3.12"
       arcade-agent-version:
-        description: Released arcade-agent package version to install, or "latest".
+        description: Released arcade-agent package version to install.
         required: false
         type: string
-        default: "latest"
+        default: "0.1.1"
       install-extras:
         description: Extras string appended to the arcade-agent package install.
         required: false
@@ -122,70 +122,70 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
 
-      - name: Install arcade-agent ${{ inputs.arcade-agent-version }}
+      - name: Install arcade-agent
+        env:
+          ARCADE_AGENT_VERSION: ${{ inputs.arcade-agent-version }}
+          INSTALL_EXTRAS: ${{ inputs.install-extras }}
         run: |
           python -m pip install --upgrade pip
-          if [ "${{ inputs.arcade-agent-version }}" = "latest" ]; then
-            python -m pip install "arcade-agent${{ inputs.install-extras }}"
+          if [ "${ARCADE_AGENT_VERSION}" = "latest" ]; then
+            python -m pip install "arcade-agent${INSTALL_EXTRAS}"
           else
-            python -m pip install "arcade-agent${{ inputs.install-extras }}==${{ inputs.arcade-agent-version }}"
+            python -m pip install "arcade-agent${INSTALL_EXTRAS}==${ARCADE_AGENT_VERSION}"
           fi
 
       - name: Run primary self-analysis
+        env:
+          SOURCE_PATH: ${{ inputs.source-path }}
+          LANGUAGE: ${{ inputs.language }}
+          REPO_NAME: ${{ inputs.repo-name }}
+          PRIMARY_ALGORITHM: ${{ inputs.primary-algorithm }}
+          FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
         run: |
-          LANGUAGE_ARGS=""
-          REPO_NAME_ARGS=""
-          FILTER_ARGS=""
-          ANALYSIS_SOURCE="target-repo/${{ inputs.source-path }}"
-          if [ -n "${{ inputs.language }}" ]; then
-            LANGUAGE_ARGS="--language ${{ inputs.language }}"
+          ARGS=(--source "target-repo/${SOURCE_PATH}")
+          if [ -n "${LANGUAGE}" ]; then
+            ARGS+=(--language "${LANGUAGE}")
           fi
-          if [ -n "${{ inputs.repo-name }}" ]; then
-            REPO_NAME_ARGS="--repo-name ${{ inputs.repo-name }}"
+          if [ -n "${REPO_NAME}" ]; then
+            ARGS+=(--repo-name "${REPO_NAME}")
           fi
-          if [ "${{ inputs.filter-non-architectural-helpers }}" = "true" ]; then
-            FILTER_ARGS="--filter-non-architectural-helpers"
+          if [ "${FILTER_NON_ARCHITECTURAL_HELPERS}" = "true" ]; then
+            ARGS+=(--filter-non-architectural-helpers)
           fi
           arcade-self-analysis \
-            --source "$ANALYSIS_SOURCE" \
-            $LANGUAGE_ARGS \
-            $REPO_NAME_ARGS \
-            $FILTER_ARGS \
-            --algorithm "${{ inputs.primary-algorithm }}" \
+            "${ARGS[@]}" \
+            --algorithm "${PRIMARY_ALGORITHM}" \
             --output-json arcade_analysis_results.json \
             --output-html arcade_analysis_report.html
 
       - name: Run secondary architecture analyses
         if: inputs.run-secondary-analyses
+        env:
+          SOURCE_PATH: ${{ inputs.source-path }}
+          LANGUAGE: ${{ inputs.language }}
+          REPO_NAME: ${{ inputs.repo-name }}
+          WCA_NUM_CLUSTERS: ${{ inputs.wca-num-clusters }}
+          FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
         run: |
-          LANGUAGE_ARGS=""
-          REPO_NAME_ARGS=""
-          FILTER_ARGS=""
-          ANALYSIS_SOURCE="target-repo/${{ inputs.source-path }}"
-          if [ -n "${{ inputs.language }}" ]; then
-            LANGUAGE_ARGS="--language ${{ inputs.language }}"
+          ARGS=(--source "target-repo/${SOURCE_PATH}")
+          if [ -n "${LANGUAGE}" ]; then
+            ARGS+=(--language "${LANGUAGE}")
           fi
-          if [ -n "${{ inputs.repo-name }}" ]; then
-            REPO_NAME_ARGS="--repo-name ${{ inputs.repo-name }}"
+          if [ -n "${REPO_NAME}" ]; then
+            ARGS+=(--repo-name "${REPO_NAME}")
           fi
-          if [ "${{ inputs.filter-non-architectural-helpers }}" = "true" ]; then
-            FILTER_ARGS="--filter-non-architectural-helpers"
+          if [ "${FILTER_NON_ARCHITECTURAL_HELPERS}" = "true" ]; then
+            ARGS+=(--filter-non-architectural-helpers)
           fi
           arcade-self-analysis \
-            --source "$ANALYSIS_SOURCE" \
-            $LANGUAGE_ARGS \
-            $REPO_NAME_ARGS \
-            $FILTER_ARGS \
+            "${ARGS[@]}" \
             --algorithm acdc \
             --output-json arcade_analysis_acdc.json \
             --output-html arcade_analysis_acdc.html
           arcade-self-analysis \
-            --source "$ANALYSIS_SOURCE" \
-            $LANGUAGE_ARGS \
-            $REPO_NAME_ARGS \
-            $FILTER_ARGS \
+            "${ARGS[@]}" \
             --algorithm wca \
-            --num-clusters "${{ inputs.wca-num-clusters }}" \
+            --num-clusters "${WCA_NUM_CLUSTERS}" \
             --output-json arcade_analysis_wca.json \
             --output-html arcade_analysis_wca.html
 
@@ -203,15 +203,21 @@ jobs:
       - name: Download baseline (if available)
         id: download_baseline
         uses: actions/github-script@v7
+        env:
+          BASELINE_ARTIFACT_NAME: ${{ inputs.baseline-artifact-name }}
+          BASELINE_BRANCH: ${{ env.BASELINE_BRANCH }}
+          BASELINE_WORKFLOW_ID: ${{ inputs.baseline-workflow-id }}
         with:
           script: |
             const fs = require('fs');
-            const baselineWorkflowId = '${{ inputs.baseline-workflow-id }}';
+            const baselineArtifactName = process.env.BASELINE_ARTIFACT_NAME;
+            const baselineBranch = process.env.BASELINE_BRANCH;
+            const baselineWorkflowId = process.env.BASELINE_WORKFLOW_ID;
 
             const runQuery = {
               owner: context.repo.owner,
               repo: context.repo.repo,
-              branch: '${{ env.BASELINE_BRANCH }}',
+              branch: baselineBranch,
               status: 'success',
               per_page: 10,
             };
@@ -230,7 +236,7 @@ jobs:
               });
 
               const baseline = artifacts.data.artifacts.find(
-                a => a.name === '${{ inputs.baseline-artifact-name }}'
+                a => a.name === baselineArtifactName
               );
               if (!baseline) continue;
 
@@ -259,6 +265,8 @@ jobs:
           ls baseline_dir/
 
       - name: Compare with baseline and generate comment
+        env:
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           BASELINE_ARG=""
           BASELINE_NOTE=""
@@ -280,7 +288,7 @@ jobs:
             --output pr_comment.md \
             --output-html arcade_analysis_comparison.html \
             --baseline-note "$BASELINE_NOTE" \
-            --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            --run-url "$RUN_URL"
 
       - name: Upload analysis artifact
         if: inputs.upload-artifacts

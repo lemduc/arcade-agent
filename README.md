@@ -219,7 +219,7 @@ jobs:
     steps:
       - uses: lemduc/arcade-agent/actions/analyze@v0.1.1
         with:
-          arcade-agent-version: latest
+          arcade-agent-version: "0.1.1"
 ```
 
 Common optional inputs:
@@ -235,8 +235,9 @@ Common optional inputs:
           baseline-branch: ""
 ```
 
-For reproducible CI, pin `arcade-agent-version` to a released package version
-such as `"0.1.1"` instead of `latest`.
+For reproducible CI, keep `arcade-agent-version` pinned to a released package
+version such as `"0.1.1"`. Avoid `latest` in shared CI because a new package
+release can change analyzer behavior without a workflow review.
 
 The action stores the baseline as a GitHub Actions artifact on
 successful pushes to the repository default branch and uses that artifact for

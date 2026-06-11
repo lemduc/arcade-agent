@@ -3,9 +3,9 @@ description: Run arcade-agent architecture analysis, upload reports, and update 
 
 inputs:
   arcade-agent-version:
-    description: Released arcade-agent package version to install, or "latest".
+    description: Released arcade-agent package version to install.
     required: false
-    default: latest
+    default: "0.1.1"
   python-version:
     description: Python version used for analysis.
     required: false
@@ -89,12 +89,23 @@ runs:
         INPUT_BASELINE_BRANCH: ${{ inputs.baseline-branch }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
+        write_config_value() {
+          local name="$1"
+          local value="$2"
+          local target="$3"
+          if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+            echo "::error::${name} must be a single-line value."
+            exit 1
+          fi
+          echo "${name}=${value}" >> "$target"
+        }
+
         if [ -n "${INPUT_BASELINE_BRANCH}" ]; then
-          echo "ARCADE_BASELINE_BRANCH=${INPUT_BASELINE_BRANCH}" >> "$GITHUB_ENV"
-          echo "baseline-branch=${INPUT_BASELINE_BRANCH}" >> "$GITHUB_OUTPUT"
+          write_config_value "ARCADE_BASELINE_BRANCH" "${INPUT_BASELINE_BRANCH}" "$GITHUB_ENV"
+          write_config_value "baseline-branch" "${INPUT_BASELINE_BRANCH}" "$GITHUB_OUTPUT"
         else
-          echo "ARCADE_BASELINE_BRANCH=${DEFAULT_BRANCH}" >> "$GITHUB_ENV"
-          echo "baseline-branch=${DEFAULT_BRANCH}" >> "$GITHUB_OUTPUT"
+          write_config_value "ARCADE_BASELINE_BRANCH" "${DEFAULT_BRANCH}" "$GITHUB_ENV"
+          write_config_value "baseline-branch" "${DEFAULT_BRANCH}" "$GITHUB_OUTPUT"
         fi
 
     - name: Checkout target repository
@@ -128,23 +139,18 @@ runs:
         PRIMARY_ALGORITHM: ${{ inputs.primary-algorithm }}
         FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
       run: |
-        LANGUAGE_ARGS=""
-        REPO_NAME_ARGS=""
-        FILTER_ARGS=""
+        ARGS=(--source "${SOURCE_PATH}")
         if [ -n "${LANGUAGE}" ]; then
-          LANGUAGE_ARGS="--language ${LANGUAGE}"
+          ARGS+=(--language "${LANGUAGE}")
         fi
         if [ -n "${REPO_NAME}" ]; then
-          REPO_NAME_ARGS="--repo-name ${REPO_NAME}"
+          ARGS+=(--repo-name "${REPO_NAME}")
         fi
         if [ "${FILTER_NON_ARCHITECTURAL_HELPERS}" = "true" ]; then
-          FILTER_ARGS="--filter-non-architectural-helpers"
+          ARGS+=(--filter-non-architectural-helpers)
         fi
         arcade-self-analysis \
-          --source "${SOURCE_PATH}" \
-          $LANGUAGE_ARGS \
-          $REPO_NAME_ARGS \
-          $FILTER_ARGS \
+          "${ARGS[@]}" \
           --algorithm "${PRIMARY_ALGORITHM}" \
           --output-json arcade_analysis_results.json \
           --output-html arcade_analysis_report.html
@@ -159,31 +165,23 @@ runs:
         WCA_NUM_CLUSTERS: ${{ inputs.wca-num-clusters }}
         FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
       run: |
-        LANGUAGE_ARGS=""
-        REPO_NAME_ARGS=""
-        FILTER_ARGS=""
+        ARGS=(--source "${SOURCE_PATH}")
         if [ -n "${LANGUAGE}" ]; then
-          LANGUAGE_ARGS="--language ${LANGUAGE}"
+          ARGS+=(--language "${LANGUAGE}")
         fi
         if [ -n "${REPO_NAME}" ]; then
-          REPO_NAME_ARGS="--repo-name ${REPO_NAME}"
+          ARGS+=(--repo-name "${REPO_NAME}")
         fi
         if [ "${FILTER_NON_ARCHITECTURAL_HELPERS}" = "true" ]; then
-          FILTER_ARGS="--filter-non-architectural-helpers"
+          ARGS+=(--filter-non-architectural-helpers)
         fi
         arcade-self-analysis \
-          --source "${SOURCE_PATH}" \
-          $LANGUAGE_ARGS \
-          $REPO_NAME_ARGS \
-          $FILTER_ARGS \
+          "${ARGS[@]}" \
           --algorithm acdc \
           --output-json arcade_analysis_acdc.json \
           --output-html arcade_analysis_acdc.html
         arcade-self-analysis \
-          --source "${SOURCE_PATH}" \
-          $LANGUAGE_ARGS \
-          $REPO_NAME_ARGS \
-          $FILTER_ARGS \
+          "${ARGS[@]}" \
           --algorithm wca \
           --num-clusters "${WCA_NUM_CLUSTERS}" \
           --output-json arcade_analysis_wca.json \
@@ -205,9 +203,12 @@ runs:
     - name: Download baseline artifact
       id: download_baseline
       uses: actions/github-script@v7
+      env:
+        BASELINE_ARTIFACT_NAME: ${{ inputs.baseline-artifact-name }}
       with:
         script: |
           const fs = require('fs');
+          const baselineArtifactName = process.env.BASELINE_ARTIFACT_NAME;
           const runs = await github.rest.actions.listWorkflowRunsForRepo({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -224,7 +225,7 @@ runs:
             });
 
             const baseline = artifacts.data.artifacts.find(
-              artifact => artifact.name === '${{ inputs.baseline-artifact-name }}'
+              artifact => artifact.name === baselineArtifactName
             );
             if (!baseline) continue;
 

@@ -8,7 +8,7 @@ on:
 # Copy this file to .github/workflows/arcade-agent-analysis.yml in any repository
 # that should run arcade-agent architecture analysis.
 env:
-  ARCADE_AGENT_VERSION: latest
+  ARCADE_AGENT_VERSION: "0.1.1"
   PYTHON_VERSION: "3.12"
   INSTALL_EXTRAS: "[languages]"
   SOURCE_PATH: "."
@@ -59,24 +59,18 @@ jobs:
 
       - name: Run primary architecture analysis
         run: |
-          LANGUAGE_ARGS=""
-          REPO_NAME_ARGS=""
-          FILTER_ARGS=""
-          ANALYSIS_SOURCE="target-repo/${SOURCE_PATH}"
+          ARGS=(--source "target-repo/${SOURCE_PATH}")
           if [ -n "${LANGUAGE}" ]; then
-            LANGUAGE_ARGS="--language ${LANGUAGE}"
+            ARGS+=(--language "${LANGUAGE}")
           fi
           if [ -n "${REPO_NAME}" ]; then
-            REPO_NAME_ARGS="--repo-name ${REPO_NAME}"
+            ARGS+=(--repo-name "${REPO_NAME}")
           fi
           if [ "${FILTER_NON_ARCHITECTURAL_HELPERS}" = "true" ]; then
-            FILTER_ARGS="--filter-non-architectural-helpers"
+            ARGS+=(--filter-non-architectural-helpers)
           fi
           arcade-self-analysis \
-            --source "$ANALYSIS_SOURCE" \
-            $LANGUAGE_ARGS \
-            $REPO_NAME_ARGS \
-            $FILTER_ARGS \
+            "${ARGS[@]}" \
             --algorithm "${PRIMARY_ALGORITHM}" \
             --output-json arcade_analysis_results.json \
             --output-html arcade_analysis_report.html
@@ -84,32 +78,23 @@ jobs:
       - name: Run secondary architecture analyses
         if: env.RUN_SECONDARY_ANALYSES == 'true'
         run: |
-          LANGUAGE_ARGS=""
-          REPO_NAME_ARGS=""
-          FILTER_ARGS=""
-          ANALYSIS_SOURCE="target-repo/${SOURCE_PATH}"
+          ARGS=(--source "target-repo/${SOURCE_PATH}")
           if [ -n "${LANGUAGE}" ]; then
-            LANGUAGE_ARGS="--language ${LANGUAGE}"
+            ARGS+=(--language "${LANGUAGE}")
           fi
           if [ -n "${REPO_NAME}" ]; then
-            REPO_NAME_ARGS="--repo-name ${REPO_NAME}"
+            ARGS+=(--repo-name "${REPO_NAME}")
           fi
           if [ "${FILTER_NON_ARCHITECTURAL_HELPERS}" = "true" ]; then
-            FILTER_ARGS="--filter-non-architectural-helpers"
+            ARGS+=(--filter-non-architectural-helpers)
           fi
           arcade-self-analysis \
-            --source "$ANALYSIS_SOURCE" \
-            $LANGUAGE_ARGS \
-            $REPO_NAME_ARGS \
-            $FILTER_ARGS \
+            "${ARGS[@]}" \
             --algorithm acdc \
             --output-json arcade_analysis_acdc.json \
             --output-html arcade_analysis_acdc.html
           arcade-self-analysis \
-            --source "$ANALYSIS_SOURCE" \
-            $LANGUAGE_ARGS \
-            $REPO_NAME_ARGS \
-            $FILTER_ARGS \
+            "${ARGS[@]}" \
             --algorithm wca \
             --num-clusters "${WCA_NUM_CLUSTERS}" \
             --output-json arcade_analysis_wca.json \
@@ -175,6 +160,8 @@ jobs:
           ls baseline_dir/
 
       - name: Compare with baseline
+        env:
+          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           BASELINE_ARG=""
           BASELINE_NOTE=""
@@ -195,7 +182,7 @@ jobs:
             --output pr_comment.md \
             --output-html arcade_analysis_comparison.html \
             --baseline-note "$BASELINE_NOTE" \
-            --run-url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            --run-url "$RUN_URL"
 
       - name: Upload analysis artifacts
         if: env.UPLOAD_ARTIFACTS == 'true'
