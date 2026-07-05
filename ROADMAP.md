@@ -40,9 +40,10 @@ Let agents ask "what do I need to read?" instead of reading everything.
 
 Handle real-world polyglot monorepos.
 
-- [ ] **15. TypeScript/JS parser** — Complete the existing stub. Critical for web projects.
-- [ ] **16. Go and Rust parsers** — High-demand languages for agent-assisted development.
-- [ ] **17. Incremental parsing** — Only re-parse changed files. Essential for large repos.
+- [x] **15. TypeScript/JS parser** — Shipped in #8 (`parsers/typescript.py`).
+- [x] **16a. Go parser** — Shipped alongside TS/JS in #8 (`parsers/go.py`).
+- [ ] **16b. Rust parser** — Still open. High-demand language for agent-assisted development.
+- [x] **17. Incremental parsing** — Content-hash extract cache shipped in #9 (`incremental.py`), wired for the Python parser only; extending to the other two-pass parsers is follow-up.
 - [ ] **18. Cross-language dependency tracking** — Java↔Python via gRPC, TS frontend↔Java backend, etc.
 
 ## Phase 6 — Agent Protocol Integration
@@ -58,7 +59,7 @@ Work everywhere agents work.
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1–8 | Phase 1 (MCP server, caching, token budget) + Phase 2 (summaries, drill-down, explain, find) |
+| **Done** | 1–8, 15, 16a, 17 | Phases 1–2 + TS/JS & Go parsers, incremental parsing (Python) |
 | **Now** | 9, 12, 14 | Change-aware context + smart context selection |
-| **Next** | 10, 13, 15 | Architectural changelog, dependency cone, TypeScript parser |
-| **Then** | 11, 16–22 | Scale, polish, ecosystem breadth |
+| **Next** | 10, 13 | Architectural changelog, dependency cone |
+| **Then** | 11, 16b, 18–22 | Scale, polish, ecosystem breadth |
