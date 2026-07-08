@@ -33,7 +33,7 @@ Help agents understand *what changed* and *what matters* without reading full di
 Let agents ask "what do I need to read?" instead of reading everything.
 
 - [x] **12. `context_for_task` tool** — Input: natural-language task description. Output: minimal set of files the agent needs, ranked by relevance with per-file role (direct match / dependency / dependent / component sibling) and reason.
-- [ ] **13. `dependency_cone` tool** — Given an entity/file, return full upstream/downstream dependency cone with depth control.
+- [x] **13. `dependency_cone` tool** — Given an entity/file, return the upstream/downstream dependency cone with depth control and per-direction node caps. Shares the cycle-safe traversal helper with `diff_impact`.
 - [x] **14. `api_surface` tool** — Extract public interfaces only (public top-level types + their public members) without implementation details. Public is derived by naming convention + external-dependent signal (parsers store no visibility field or param types).
 
 ## Phase 5 — Multi-Language & Scale
@@ -59,7 +59,7 @@ Work everywhere agents work.
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1–9, 12, 14, 15, 16a, 17 | Phases 1–2 + TS/JS & Go parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface` |
-| **Now** | 10, 13 | Architectural changelog, dependency cone |
+| **Done** | 1–9, 12, 13, 14, 15, 16a, 17 | Phases 1–2 + TS/JS & Go parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface` |
+| **Now** | 10 | Architectural changelog |
 | **Next** | 11, 16b | Component ownership, Rust parser |
 | **Then** | 18–22 | Cross-language tracking, ecosystem breadth |

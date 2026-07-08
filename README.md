@@ -61,6 +61,7 @@ visualize(repo.name, repo.version, graph, arch, smells, output="report.html")
 | `find_relevant` | Find entities relevant to a natural-language query |
 | `api_surface` | Extract the public API surface (public types + members) without implementation detail |
 | `diff_impact` | Map changed files to affected components, downstream dependents, and broken contracts |
+| `dependency_cone` | Upstream/downstream dependency cone of an entity or file, with depth control |
 | `context_for_task` | Rank the minimal set of files to read for a natural-language task |
 
 ## Balanced Architecture Score
