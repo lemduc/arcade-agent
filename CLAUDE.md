@@ -34,7 +34,7 @@ Tool library with registry pattern — no pipeline, no CLI orchestrator. Each to
 registry.py          # @tool decorator, discovery
 parsers/             # Language-agnostic parsing (tree-sitter)
 models/              # Shared dataclasses (DependencyGraph, Architecture, etc.)
-tools/               # 8 composable tools (ingest, parse, recover, detect_smells, ...)
+tools/               # composable tools (ingest, parse, recover, detect_smells, summarize, api_surface, diff_impact, context_for_task, ...)
 algorithms/          # Pure algorithm implementations (clustering, SCC, metrics)
 exporters/           # Output format adapters (HTML, DOT, JSON, RSF, Mermaid)
 adapters/            # Framework integration (MCP stub for v2)

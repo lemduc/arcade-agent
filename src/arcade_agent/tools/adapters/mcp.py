@@ -506,6 +506,117 @@ def _build_server():  # type: ignore[no-untyped-def]
         serialized = serialize_result(result)
         return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
 
+    # -- api_surface -----------------------------------------------------------
+
+    @server.tool()
+    def api_surface(
+        dep_graph: str,
+        scope: str | None = None,
+        include_members: bool = True,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Extract the public API surface of a codebase.
+
+        Returns public top-level types and their public members grouped by
+        package (the 'what can I call' view). Implementation bodies, private
+        (underscore-prefixed) entities, and parameter/return types are omitted.
+
+        Args:
+            dep_graph: Session ID from a previous 'parse' call.
+            scope: Optional package prefix; only entities whose package starts
+                with it are included.
+            include_members: Nest public members under their owner type (default True).
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.api_surface import api_surface as _api_surface
+
+        graph_obj = _resolve(dep_graph, "DependencyGraph")
+        result = _api_surface(
+            dep_graph=graph_obj,
+            scope=scope,
+            include_members=include_members,
+        )
+        serialized = serialize_result(result)
+        return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
+    # -- diff_impact -----------------------------------------------------------
+
+    @server.tool()
+    def diff_impact(
+        dep_graph: str,
+        changed_files: list[str],
+        architecture: str | None = None,
+        max_depth: int = 3,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Assess the architectural blast radius of a set of changed files.
+
+        Maps changed file paths to affected entities and components, the
+        downstream reverse-dependency closure (who depends on them), and the
+        subset of changed entities that form a public contract for external
+        callers — a diff impact analysis without reading the diff.
+
+        Args:
+            dep_graph: Session ID from a previous 'parse' call.
+            changed_files: Changed file paths (e.g. from 'git diff --name-only').
+            architecture: Optional session ID from a previous 'recover' call.
+            max_depth: Max reverse-dependency hops to walk (1 = direct callers).
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.diff_impact import diff_impact as _diff_impact
+
+        graph_obj = _resolve(dep_graph, "DependencyGraph")
+        arch_obj = _resolve(architecture, "Architecture") if architecture else None
+        result = _diff_impact(
+            dep_graph=graph_obj,
+            changed_files=changed_files,
+            architecture=arch_obj,
+            max_depth=max_depth,
+        )
+        serialized = serialize_result(result)
+        return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
+    # -- context_for_task ------------------------------------------------------
+
+    @server.tool()
+    def context_for_task(
+        dep_graph: str,
+        task: str,
+        architecture: str | None = None,
+        max_files: int = 15,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Assemble the minimal ranked set of files to read for a task.
+
+        Given a natural-language task, returns the smallest useful set of files
+        an agent should read, each with a role ("direct match", "dependency of
+        match", "dependent of match", "component sibling") and a concise reason.
+        Seeds on keyword matches, then expands to the direct dependencies and
+        dependents of the top seeds so the agent gets the neighbourhood it must
+        understand instead of reading everything.
+
+        Args:
+            dep_graph: Session ID from a previous 'parse' call.
+            task: Natural-language task (e.g. "add rate limiting to login").
+            architecture: Optional session ID from a previous 'recover' call.
+            max_files: Maximum number of files to return.
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.context_for_task import (
+            context_for_task as _context_for_task,
+        )
+
+        graph_obj = _resolve(dep_graph, "DependencyGraph")
+        arch_obj = _resolve(architecture, "Architecture") if architecture else None
+        result = _context_for_task(
+            dep_graph=graph_obj,
+            task=task,
+            architecture=arch_obj,
+            max_files=max_files,
+        )
+        serialized = serialize_result(result)
+        return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
     # -- get_full_result -------------------------------------------------------
 
     @server.tool()
