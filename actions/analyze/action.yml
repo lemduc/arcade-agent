@@ -1,0 +1,350 @@
+name: Arcade Architecture Analysis
+description: Run arcade-agent architecture analysis, upload reports, and update PR comments.
+
+inputs:
+  arcade-agent-version:
+    description: Released arcade-agent package version to install.
+    required: false
+    default: "0.1.1"
+  python-version:
+    description: Python version used for analysis.
+    required: false
+    default: "3.12"
+  install-extras:
+    description: Extras appended to the arcade-agent package install.
+    required: false
+    default: "[languages]"
+  checkout:
+    description: Whether to checkout the caller repository before analysis.
+    required: false
+    default: "true"
+  source-path:
+    description: Path to the project root for analysis, relative to the workspace.
+    required: false
+    default: "."
+  language:
+    description: Optional language override (java, python, typescript, c).
+    required: false
+    default: ""
+  repo-name:
+    description: Optional repository name override for reports.
+    required: false
+    default: ""
+  primary-algorithm:
+    description: Primary architecture recovery algorithm.
+    required: false
+    default: pkg
+  filter-non-architectural-helpers:
+    description: Apply arcade-agent self-dogfooding helper filters. Leave false for generic repositories.
+    required: false
+    default: "false"
+  run-secondary-analyses:
+    description: Whether to run ACDC and exploratory WCA analyses.
+    required: false
+    default: "true"
+  wca-num-clusters:
+    description: Cluster count for the exploratory WCA run.
+    required: false
+    default: "4"
+  upload-artifacts:
+    description: Upload HTML/JSON analysis artifacts.
+    required: false
+    default: "true"
+  analysis-artifact-name:
+    description: Artifact name for analysis outputs.
+    required: false
+    default: arcade-agent-self-analysis
+  analysis-artifact-retention-days:
+    description: Retention days for the analysis artifact.
+    required: false
+    default: "30"
+  baseline-branch:
+    description: Branch used for baseline artifacts. Defaults to the repository default branch.
+    required: false
+    default: ""
+  baseline-artifact-name:
+    description: Artifact name storing baseline JSON.
+    required: false
+    default: arcade-agent-baseline
+  baseline-retention-days:
+    description: Retention days for the baseline artifact.
+    required: false
+    default: "90"
+  store-baseline-on-push:
+    description: Store baseline artifact on baseline branch pushes.
+    required: false
+    default: "true"
+  post-pr-comment:
+    description: Post or update the PR comment with analysis summary.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve arcade-agent action configuration
+      id: config
+      shell: bash
+      env:
+        INPUT_BASELINE_BRANCH: ${{ inputs.baseline-branch }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      run: |
+        write_config_value() {
+          local name="$1"
+          local value="$2"
+          local target="$3"
+          if [[ "$value" == *$'\n'* || "$value" == *$'\r'* ]]; then
+            echo "::error::${name} must be a single-line value."
+            exit 1
+          fi
+          echo "${name}=${value}" >> "$target"
+        }
+
+        if [ -n "${INPUT_BASELINE_BRANCH}" ]; then
+          write_config_value "ARCADE_BASELINE_BRANCH" "${INPUT_BASELINE_BRANCH}" "$GITHUB_ENV"
+          write_config_value "baseline-branch" "${INPUT_BASELINE_BRANCH}" "$GITHUB_OUTPUT"
+        else
+          write_config_value "ARCADE_BASELINE_BRANCH" "${DEFAULT_BRANCH}" "$GITHUB_ENV"
+          write_config_value "baseline-branch" "${DEFAULT_BRANCH}" "$GITHUB_OUTPUT"
+        fi
+
+    - name: Checkout target repository
+      if: ${{ inputs.checkout == 'true' }}
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install arcade-agent
+      shell: bash
+      env:
+        ARCADE_AGENT_VERSION: ${{ inputs.arcade-agent-version }}
+        INSTALL_EXTRAS: ${{ inputs.install-extras }}
+      run: |
+        python -m pip install --upgrade pip
+        if [ "${ARCADE_AGENT_VERSION}" = "latest" ]; then
+          python -m pip install "arcade-agent${INSTALL_EXTRAS}"
+        else
+          python -m pip install "arcade-agent${INSTALL_EXTRAS}==${ARCADE_AGENT_VERSION}"
+        fi
+
+    - name: Run primary architecture analysis
+      shell: bash
+      env:
+        SOURCE_PATH: ${{ inputs.source-path }}
+        LANGUAGE: ${{ inputs.language }}
+        REPO_NAME: ${{ inputs.repo-name }}
+        PRIMARY_ALGORITHM: ${{ inputs.primary-algorithm }}
+        FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
+      run: |
+        ARGS=(--source "${SOURCE_PATH}")
+        if [ -n "${LANGUAGE}" ]; then
+          ARGS+=(--language "${LANGUAGE}")
+        fi
+        if [ -n "${REPO_NAME}" ]; then
+          ARGS+=(--repo-name "${REPO_NAME}")
+        fi
+        if [ "${FILTER_NON_ARCHITECTURAL_HELPERS}" = "true" ]; then
+          ARGS+=(--filter-non-architectural-helpers)
+        fi
+        arcade-self-analysis \
+          "${ARGS[@]}" \
+          --algorithm "${PRIMARY_ALGORITHM}" \
+          --output-json arcade_analysis_results.json \
+          --output-html arcade_analysis_report.html
+
+    - name: Run secondary architecture analyses
+      if: ${{ inputs.run-secondary-analyses == 'true' }}
+      shell: bash
+      env:
+        SOURCE_PATH: ${{ inputs.source-path }}
+        LANGUAGE: ${{ inputs.language }}
+        REPO_NAME: ${{ inputs.repo-name }}
+        WCA_NUM_CLUSTERS: ${{ inputs.wca-num-clusters }}
+        FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
+      run: |
+        ARGS=(--source "${SOURCE_PATH}")
+        if [ -n "${LANGUAGE}" ]; then
+          ARGS+=(--language "${LANGUAGE}")
+        fi
+        if [ -n "${REPO_NAME}" ]; then
+          ARGS+=(--repo-name "${REPO_NAME}")
+        fi
+        if [ "${FILTER_NON_ARCHITECTURAL_HELPERS}" = "true" ]; then
+          ARGS+=(--filter-non-architectural-helpers)
+        fi
+        arcade-self-analysis \
+          "${ARGS[@]}" \
+          --algorithm acdc \
+          --output-json arcade_analysis_acdc.json \
+          --output-html arcade_analysis_acdc.html
+        arcade-self-analysis \
+          "${ARGS[@]}" \
+          --algorithm wca \
+          --num-clusters "${WCA_NUM_CLUSTERS}" \
+          --output-json arcade_analysis_wca.json \
+          --output-html arcade_analysis_wca.html
+
+    - name: Display analysis results
+      shell: bash
+      env:
+        RUN_SECONDARY_ANALYSES: ${{ inputs.run-secondary-analyses }}
+      run: |
+        arcade-log-analysis-summary arcade_analysis_results.json
+        if [ "${RUN_SECONDARY_ANALYSES}" = "true" ]; then
+          echo "== ACDC =="
+          arcade-log-analysis-summary arcade_analysis_acdc.json
+          echo "== WCA (exploratory) =="
+          arcade-log-analysis-summary arcade_analysis_wca.json
+        fi
+
+    - name: Download baseline artifact
+      id: download_baseline
+      uses: actions/github-script@v7
+      env:
+        BASELINE_ARTIFACT_NAME: ${{ inputs.baseline-artifact-name }}
+      with:
+        script: |
+          const fs = require('fs');
+          const baselineArtifactName = process.env.BASELINE_ARTIFACT_NAME;
+          const runs = await github.rest.actions.listWorkflowRunsForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            branch: process.env.ARCADE_BASELINE_BRANCH,
+            status: 'success',
+            per_page: 20,
+          });
+
+          for (const run of runs.data.workflow_runs) {
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+            });
+
+            const baseline = artifacts.data.artifacts.find(
+              artifact => artifact.name === baselineArtifactName
+            );
+            if (!baseline) continue;
+
+            const download = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              artifact_id: baseline.id,
+              archive_format: 'zip',
+            });
+
+            fs.writeFileSync('baseline.zip', Buffer.from(download.data));
+            core.setOutput('found', 'true');
+            console.log(`Downloaded baseline from run ${run.id} (${run.created_at})`);
+            return;
+          }
+
+          core.setOutput('found', 'false');
+          console.log('No baseline artifact found.');
+
+    - name: Unpack baseline
+      if: ${{ steps.download_baseline.outputs.found == 'true' }}
+      shell: bash
+      run: |
+        mkdir -p baseline_dir
+        unzip -q baseline.zip -d baseline_dir
+        ls baseline_dir/
+
+    - name: Compare with baseline
+      shell: bash
+      env:
+        RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: |
+        BASELINE_ARG=""
+        BASELINE_NOTE=""
+        CURRENT_ALGORITHM=$(python -c "import json; from pathlib import Path; print(json.loads(Path('arcade_analysis_results.json').read_text()).get('algorithm', ''))")
+        if [ -f baseline_dir/arcade_analysis_baseline.json ]; then
+          BASELINE_ALGORITHM=$(python -c "import json; from pathlib import Path; print(json.loads(Path('baseline_dir/arcade_analysis_baseline.json').read_text()).get('algorithm', ''))")
+          if [ "$BASELINE_ALGORITHM" = "$CURRENT_ALGORITHM" ]; then
+            BASELINE_ARG="baseline_dir/arcade_analysis_baseline.json"
+          else
+            BASELINE_NOTE="Improvement tracking is temporarily unavailable because the stored baseline uses '$BASELINE_ALGORITHM' while the current primary analysis uses '$CURRENT_ALGORITHM'. After the next successful push to ${ARCADE_BASELINE_BRANCH}, the baseline will be refreshed and PR improvement deltas will resume."
+          fi
+        else
+          BASELINE_NOTE="Improvement tracking is unavailable because no baseline artifact was found yet. After the next successful push to ${ARCADE_BASELINE_BRANCH}, PR improvement deltas will appear."
+        fi
+        arcade-compare-baseline \
+          arcade_analysis_results.json \
+          $BASELINE_ARG \
+          --output pr_comment.md \
+          --output-html arcade_analysis_comparison.html \
+          --baseline-note "$BASELINE_NOTE" \
+          --run-url "$RUN_URL"
+
+    - name: Upload analysis artifacts
+      if: ${{ inputs.upload-artifacts == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.analysis-artifact-name }}
+        path: |
+          arcade_analysis_report.html
+          arcade_analysis_results.json
+          arcade_analysis_comparison.html
+          pr_comment.md
+          arcade_analysis_acdc.html
+          arcade_analysis_acdc.json
+          arcade_analysis_wca.html
+          arcade_analysis_wca.json
+        retention-days: ${{ inputs.analysis-artifact-retention-days }}
+        if-no-files-found: warn
+
+    - name: Store baseline artifact
+      if: ${{ inputs.store-baseline-on-push == 'true' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', steps.config.outputs.baseline-branch) }}
+      shell: bash
+      run: cp arcade_analysis_results.json arcade_analysis_baseline.json
+
+    - name: Upload baseline artifact
+      if: ${{ inputs.store-baseline-on-push == 'true' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', steps.config.outputs.baseline-branch) }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.baseline-artifact-name }}
+        path: arcade_analysis_baseline.json
+        retention-days: ${{ inputs.baseline-retention-days }}
+
+    - name: Post or update PR comment
+      if: ${{ inputs.post-pr-comment == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const fs = require('fs');
+          const marker = '<!-- arcade-agent-analysis -->';
+          const commentBody = fs.readFileSync('pr_comment.md', 'utf8');
+          const body = `${marker}\n${commentBody}`;
+
+          const comments = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            per_page: 100,
+          });
+
+          const existing = comments.data.find(comment => comment.body?.includes(marker));
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body,
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+          }
+
+    - name: Skip PR comment on forked PRs
+      if: ${{ inputs.post-pr-comment == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+      shell: bash
+      run: |
+        echo "Skipping PR comment because forked pull_request workflows do not receive write access to PR comments."

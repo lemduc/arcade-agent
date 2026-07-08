@@ -35,6 +35,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      issues: write
       pull-requests: write
     uses: ./.github/workflows/architecture-analysis-reusable.yml
     with:
@@ -42,6 +43,7 @@ jobs:
       source-path: .
       primary-algorithm: pkg
       baseline-workflow-id: ci.yml
-      tooling-repository: ${{ github.repository }}
-      tooling-ref: ${{ github.sha }}
+      # Analyze the checked-out source, not a released package that lags this PR.
+      arcade-agent-version: "source"
+      filter-non-architectural-helpers: true
     secrets: inherit
