@@ -1,8 +1,7 @@
 """Tool: Map a set of changed files to their architectural impact."""
 
-from collections import deque
-
 from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.algorithms.traversal import adjacency_with_relations, walk_cone
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.registry import tool
 
@@ -109,38 +108,15 @@ def diff_impact(
         affected_components = sorted(comp_names)
 
     # -- 3. Downstream dependents (reverse-dependency closure) ----------------
-    # Reverse adjacency: target -> list of (source, relation) that depend on it.
-    reverse_adj: dict[str, list[tuple[str, str]]] = {}
-    for edge in dep_graph.edges:
-        reverse_adj.setdefault(edge.target, []).append((edge.source, edge.relation))
-
-    # Multi-source BFS seeded at all changed entities (distance 0). A visited
-    # set pre-loaded with the changed set both prevents cycles from looping and
-    # excludes changed entities from the results.
-    visited: set[str] = set(changed_fqns)
-    downstream: dict[str, dict] = {}
-    queue: deque[tuple[str, int, str | None]] = deque(
-        (fqn, 0, None) for fqn in changed_fqns
-    )
-    while queue:
-        node, dist, first_rel = queue.popleft()
-        if dist >= max_depth:
-            continue
-        for src, rel in reverse_adj.get(node, []):
-            if src in visited:
-                continue
-            visited.add(src)
-            hop_rel = rel if first_rel is None else first_rel
-            if src in dep_graph.entities:
-                downstream[src] = {
-                    "fqn": src,
-                    "distance": dist + 1,
-                    "via_relation": hop_rel,
-                }
-            queue.append((src, dist + 1, hop_rel))
-
-    downstream_dependents = sorted(
-        downstream.values(), key=lambda d: (d["distance"], d["fqn"])
+    # Walk reverse edges from the changed entities: who transitively depends on
+    # them. valid_nodes restricts results to real graph entities (external edge
+    # sources are traversed but not reported).
+    reverse_adj = adjacency_with_relations(dep_graph, reverse=True)
+    downstream_dependents, _ = walk_cone(
+        reverse_adj,
+        changed_fqns,
+        max_depth,
+        valid_nodes=set(dep_graph.entities),
     )
 
     # -- 4. Broken contracts ---------------------------------------------------
