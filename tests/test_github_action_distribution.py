@@ -40,22 +40,30 @@ def test_reusable_workflow_installs_released_package_not_tooling_checkout():
     assert f'default: "{version}"' in workflow
     assert 'if [ "${ARCADE_AGENT_VERSION}" = "latest" ]; then' in workflow
     assert 'python -m pip install "arcade-agent${INSTALL_EXTRAS}"' in workflow
-    assert "pip install -e" not in workflow
     assert "tooling-repo" not in workflow
     assert "tooling-repository" not in workflow
     assert "tooling-ref" not in workflow
     assert expected_install_spec in workflow
+    # "source" sentinel installs the checked-out repo (non-editable) so
+    # self-dogfooding runs the code under review, not a released package that
+    # necessarily lags the PR.
+    assert 'if [ "${ARCADE_AGENT_VERSION}" = "source" ]; then' in workflow
+    assert 'python -m pip install "./target-repo${INSTALL_EXTRAS}"' in workflow
+    assert "pip install -e" not in workflow
     assert "arcade-self-analysis" in workflow
     assert "arcade-compare-baseline" in workflow
     assert "filter-non-architectural-helpers" in workflow
     assert "default: false" in workflow
 
 
-def test_self_dogfood_ci_pins_release_package_version():
+def test_self_dogfood_ci_installs_from_source():
+    # Self-dogfooding must analyze the code under review, so CI installs the
+    # checked-out source via the reusable workflow's "source" sentinel rather
+    # than a released package version that necessarily lags the PR (e.g. a bump
+    # to an as-yet-unpublished version would break every analysis run).
     workflow = (ROOT / ".github/workflows/ci.yml").read_text()
-    version = _package_version()
 
-    assert f'arcade-agent-version: "{version}"' in workflow
+    assert 'arcade-agent-version: "source"' in workflow
     assert "filter-non-architectural-helpers: true" in workflow
     assert "tooling-ref:" not in workflow
     assert "tooling-repository:" not in workflow

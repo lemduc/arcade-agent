@@ -11,9 +11,6 @@ on:
         required: false
         default: ""
 
-env:
-  ARCADE_AGENT_VERSION: "0.1.1"
-
 jobs:
   # On PR: analyze architecture and post comment
   analyze:
@@ -35,7 +32,7 @@ jobs:
       - name: Install arcade-agent
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "arcade-agent[languages]==${ARCADE_AGENT_VERSION}"
+          python -m pip install -e ".[languages]"
 
       - name: Run architecture drift detection
         id: drift
@@ -120,7 +117,7 @@ jobs:
       - name: Install arcade-agent
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "arcade-agent[languages]==${ARCADE_AGENT_VERSION}"
+          python -m pip install -e ".[languages]"
 
       - name: Update baseline
         env:

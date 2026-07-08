@@ -9,7 +9,7 @@ on:
         type: string
         default: "3.12"
       arcade-agent-version:
-        description: Released arcade-agent package version to install.
+        description: Released arcade-agent package version to install, or "source" to install the checked-out repository (self-dogfooding).
         required: false
         type: string
         default: "0.1.1"
@@ -128,7 +128,11 @@ jobs:
           INSTALL_EXTRAS: ${{ inputs.install-extras }}
         run: |
           python -m pip install --upgrade pip
-          if [ "${ARCADE_AGENT_VERSION}" = "latest" ]; then
+          if [ "${ARCADE_AGENT_VERSION}" = "source" ]; then
+            # Self-dogfooding: install the checked-out repo so analysis runs the
+            # code under review, not a released package that necessarily lags it.
+            python -m pip install "./target-repo${INSTALL_EXTRAS}"
+          elif [ "${ARCADE_AGENT_VERSION}" = "latest" ]; then
             python -m pip install "arcade-agent${INSTALL_EXTRAS}"
           else
             python -m pip install "arcade-agent${INSTALL_EXTRAS}==${ARCADE_AGENT_VERSION}"

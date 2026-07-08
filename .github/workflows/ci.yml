@@ -43,6 +43,7 @@ jobs:
       source-path: .
       primary-algorithm: pkg
       baseline-workflow-id: ci.yml
-      arcade-agent-version: "0.1.1"
+      # Analyze the checked-out source, not a released package that lags this PR.
+      arcade-agent-version: "source"
       filter-non-architectural-helpers: true
     secrets: inherit
