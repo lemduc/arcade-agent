@@ -1,6 +1,37 @@
 """Tests for the dependency_cone tool."""
 
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 from arcade_agent.tools.dependency_cone import dependency_cone
+
+
+def _chain_graph(*names: str, extra_edges: tuple[tuple[str, str], ...] = ()) -> DependencyGraph:
+    """Build a graph of ``names`` chained a->b->c... plus optional extra edges."""
+    entities = {
+        n: Entity(
+            fqn=n, name=n, package="p", file_path=f"{n}.py",
+            kind="class", language="py",
+        )
+        for n in names
+    }
+    edges = [Edge(names[i], names[i + 1], "import") for i in range(len(names) - 1)]
+    edges += [Edge(src, tgt, "import") for src, tgt in extra_edges]
+    return DependencyGraph(entities=entities, edges=edges)
+
+
+def test_max_depth_bounds_walk_on_chain():
+    # a -> b -> c: upstream from a must respect the depth cap at the tool boundary.
+    graph = _chain_graph("a", "b", "c")
+    r1 = dependency_cone(graph, "a", direction="upstream", max_depth=1)
+    r2 = dependency_cone(graph, "a", direction="upstream", max_depth=2)
+    assert {n["fqn"] for n in r1["upstream"]["nodes"]} == {"b"}
+    assert {n["fqn"] for n in r2["upstream"]["nodes"]} == {"b", "c"}
+
+
+def test_cycle_with_back_edge_is_finite():
+    # a -> b -> c -> a: a genuine cycle must terminate with the exact node set.
+    graph = _chain_graph("a", "b", "c", extra_edges=(("c", "a"),))
+    result = dependency_cone(graph, "a", direction="upstream", max_depth=10)
+    assert {n["fqn"] for n in result["upstream"]["nodes"]} == {"b", "c"}
 
 
 def test_downstream_from_entity(sample_graph):
