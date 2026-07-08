@@ -617,6 +617,42 @@ def _build_server():  # type: ignore[no-untyped-def]
         serialized = serialize_result(result)
         return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
 
+    # -- dependency_cone -------------------------------------------------------
+
+    @server.tool()
+    def dependency_cone(
+        dep_graph: str,
+        target: str,
+        direction: str = "both",
+        max_depth: int = 3,
+        max_nodes: int | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Return the upstream/downstream dependency cone of an entity or file.
+
+        Args:
+            dep_graph: Session ID from a previous 'parse' call.
+            target: An entity FQN or a file path to seed the cone from.
+            direction: "upstream", "downstream", or "both".
+            max_depth: Maximum hops to walk (1 = direct neighbors).
+            max_nodes: Optional per-direction cap on returned nodes.
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.dependency_cone import (
+            dependency_cone as _dependency_cone,
+        )
+
+        graph_obj = _resolve(dep_graph, "DependencyGraph")
+        result = _dependency_cone(
+            dep_graph=graph_obj,
+            target=target,
+            direction=direction,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+        )
+        serialized = serialize_result(result)
+        return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
     # -- get_full_result -------------------------------------------------------
 
     @server.tool()
