@@ -24,7 +24,7 @@ Give agents maximum understanding per token spent.
 
 Help agents understand *what changed* and *what matters* without reading full diffs.
 
-- [ ] **9. `diff_impact` tool** — Given a git diff/PR, map changed files to affected components, downstream dependencies, and potentially broken contracts.
+- [x] **9. `diff_impact` tool** — Given a set of changed files, map them to affected components, the downstream reverse-dependency closure, and potentially broken contracts (external callers of changed public entities).
 - [ ] **10. `changelog_architecture` tool** — Given two commits/tags, produce an architectural changelog: new/removed components, shifted responsibilities, new smells.
 - [ ] **11. `blame_component` tool** — Component-level ownership via git blame aggregation.
 
@@ -32,17 +32,18 @@ Help agents understand *what changed* and *what matters* without reading full di
 
 Let agents ask "what do I need to read?" instead of reading everything.
 
-- [ ] **12. `context_for_task` tool** — Input: natural-language task description. Output: minimal set of files the agent needs, ranked by relevance with brief role explanations.
-- [ ] **13. `dependency_cone` tool** — Given an entity/file, return full upstream/downstream dependency cone with depth control.
-- [ ] **14. `api_surface` tool** — Extract public interfaces only (public methods, exported functions, type signatures) without implementation details.
+- [x] **12. `context_for_task` tool** — Input: natural-language task description. Output: minimal set of files the agent needs, ranked by relevance with per-file role (direct match / dependency / dependent / component sibling) and reason.
+- [x] **13. `dependency_cone` tool** — Given an entity/file, return the upstream/downstream dependency cone with depth control and per-direction node caps. Shares the cycle-safe traversal helper with `diff_impact`.
+- [x] **14. `api_surface` tool** — Extract public interfaces only (public top-level types + their public members) without implementation details. Public is derived by naming convention + external-dependent signal (parsers store no visibility field or param types).
 
 ## Phase 5 — Multi-Language & Scale
 
 Handle real-world polyglot monorepos.
 
-- [ ] **15. TypeScript/JS parser** — Complete the existing stub. Critical for web projects.
-- [ ] **16. Go and Rust parsers** — High-demand languages for agent-assisted development.
-- [ ] **17. Incremental parsing** — Only re-parse changed files. Essential for large repos.
+- [x] **15. TypeScript/JS parser** — Shipped in #8 (`parsers/typescript.py`).
+- [x] **16a. Go parser** — Shipped alongside TS/JS in #8 (`parsers/go.py`).
+- [ ] **16b. Rust parser** — Still open. High-demand language for agent-assisted development.
+- [x] **17. Incremental parsing** — Content-hash extract cache shipped in #9 (`incremental.py`), wired for the Python parser only; extending to the other two-pass parsers is follow-up.
 - [ ] **18. Cross-language dependency tracking** — Java↔Python via gRPC, TS frontend↔Java backend, etc.
 
 ## Phase 6 — Agent Protocol Integration
@@ -58,7 +59,7 @@ Work everywhere agents work.
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1–8 | Phase 1 (MCP server, caching, token budget) + Phase 2 (summaries, drill-down, explain, find) |
-| **Now** | 9, 12, 14 | Change-aware context + smart context selection |
-| **Next** | 10, 13, 15 | Architectural changelog, dependency cone, TypeScript parser |
-| **Then** | 11, 16–22 | Scale, polish, ecosystem breadth |
+| **Done** | 1–9, 12, 13, 14, 15, 16a, 17 | Phases 1–2 + TS/JS & Go parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface` |
+| **Now** | 10 | Architectural changelog |
+| **Next** | 11, 16b | Component ownership, Rust parser |
+| **Then** | 18–22 | Cross-language tracking, ecosystem breadth |

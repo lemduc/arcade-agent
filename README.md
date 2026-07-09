@@ -59,6 +59,10 @@ visualize(repo.name, repo.version, graph, arch, smells, output="report.html")
 | `summarize` | Codebase overview with package tree, hotspots, entry points; drill-down via `focus` |
 | `explain_component` | Component detail: API surface, dependencies, cohesion |
 | `find_relevant` | Find entities relevant to a natural-language query |
+| `api_surface` | Extract the public API surface (public types + members) without implementation detail |
+| `diff_impact` | Map changed files to affected components, downstream dependents, and broken contracts |
+| `dependency_cone` | Upstream/downstream dependency cone of an entity or file, with depth control |
+| `context_for_task` | Rank the minimal set of files to read for a natural-language task |
 
 ## Balanced Architecture Score
 
@@ -100,7 +104,8 @@ smell burden, or another architectural pressure.
 - Java (full support)
 - Python (full support)
 - C/C++ (full support)
-- TypeScript/JavaScript (stub — contributions welcome)
+- TypeScript/JavaScript (full support)
+- Go (full support)
 
 ## Example: ARCADE Core
 
@@ -284,7 +289,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
-| Multi-language parsing | Done | Java, Python, C/C++ (full), TypeScript (stub) |
+| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |

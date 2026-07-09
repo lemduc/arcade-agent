@@ -1,0 +1,151 @@
+"""Tool: Map a set of changed files to their architectural impact."""
+
+from typing import Any
+
+from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.algorithms.traversal import adjacency_with_relations, walk_cone
+from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.tools.registry import tool
+
+
+def _paths_match(entity_path: str, changed_file: str) -> bool:
+    """Test whether a graph entity path refers to a changed file.
+
+    Matching tolerates one path being rooted differently from the other: a
+    match is reported when the two are equal, or when one is a *path-suffix*
+    of the other on a segment boundary. Bare-basename equality is deliberately
+    NOT a match — parsers record repo-relative paths, so ``src/auth/models.py``
+    and ``src/billing/models.py`` are distinct files that must not be conflated.
+
+    Args:
+        entity_path: The ``file_path`` recorded on a graph entity.
+        changed_file: A changed file path (e.g. from a git diff).
+
+    Returns:
+        True if the entity path refers to the changed file.
+    """
+    ep = entity_path.replace("\\", "/")
+    cf = changed_file.replace("\\", "/")
+    if ep == cf:
+        return True
+    return ep.endswith("/" + cf) or cf.endswith("/" + ep)
+
+
+@tool(
+    name="diff_impact",
+    description="Map changed files to affected entities, components, downstream "
+    "dependents, and potentially broken public contracts — a blast-radius "
+    "analysis for a code change without reading the diff.",
+)
+def diff_impact(
+    dep_graph: DependencyGraph,
+    changed_files: list[str],
+    architecture: Architecture | None = None,
+    max_depth: int = 3,
+) -> dict[str, Any]:
+    """Assess the architectural blast radius of a set of changed files.
+
+    Changed files are mapped to entities, then to their enclosing components,
+    their transitive reverse-dependency closure (who depends on them), and the
+    subset of changed entities that form a public contract for external callers.
+
+    "Public" is derived structurally (never read from a field): an entity is a
+    public contract if it has incoming edges from entities outside the *changed
+    files*. This is the same kind of signal ``explain_component`` uses for its
+    API surface, but against a different boundary — that tool tests membership
+    of a recovered component, not of the changed-file set.
+
+    Args:
+        dep_graph: Dependency graph to analyze against.
+        changed_files: Changed file paths (e.g. from ``git diff --name-only``).
+        architecture: Optional recovered architecture for component mapping.
+        max_depth: Maximum reverse-dependency hops to walk (1 = direct callers).
+
+    Returns:
+        Dict describing matched/unmatched files, changed entities, affected
+        components, downstream dependents (with distance and first-hop relation),
+        and potentially broken contracts with their external dependents.
+    """
+    # -- 1. Match changed files to entities -----------------------------------
+    matched_files: list[str] = []
+    unmatched_files: list[str] = []
+    changed_fqns: set[str] = set()
+
+    for cf in changed_files:
+        hits = [
+            fqn
+            for fqn, entity in dep_graph.entities.items()
+            if _paths_match(entity.file_path, cf)
+        ]
+        if hits:
+            matched_files.append(cf)
+            changed_fqns.update(hits)
+        else:
+            unmatched_files.append(cf)
+
+    changed_entities = []
+    for fqn in sorted(changed_fqns):
+        entity = dep_graph.entities.get(fqn)
+        if entity:
+            changed_entities.append({
+                "fqn": fqn,
+                "name": entity.name,
+                "kind": entity.kind,
+                "file_path": entity.file_path,
+            })
+
+    # -- 2. Affected components ------------------------------------------------
+    affected_components: list[str] = []
+    if architecture is not None:
+        comp_names: set[str] = set()
+        for fqn in changed_fqns:
+            comp = architecture.component_of(fqn)
+            if comp:
+                comp_names.add(comp)
+        affected_components = sorted(comp_names)
+
+    # -- 3. Downstream dependents (reverse-dependency closure) ----------------
+    # Walk reverse edges from the changed entities: who transitively depends on
+    # them. valid_nodes restricts results to real graph entities (external edge
+    # sources are traversed but not reported).
+    reverse_adj = adjacency_with_relations(dep_graph, reverse=True)
+    downstream_dependents, _ = walk_cone(
+        reverse_adj,
+        changed_fqns,
+        max_depth,
+        valid_nodes=set(dep_graph.entities),
+    )
+
+    # -- 4. Broken contracts ---------------------------------------------------
+    # Changed entities that external (non-changed) entities depend on.
+    external_deps: dict[str, list[str]] = {}
+    for edge in dep_graph.edges:
+        if (
+            edge.target in changed_fqns
+            and edge.source not in changed_fqns
+            and edge.source in dep_graph.entities
+        ):
+            external_deps.setdefault(edge.target, [])
+            if edge.source not in external_deps[edge.target]:
+                external_deps[edge.target].append(edge.source)
+
+    broken_contracts = []
+    for fqn in sorted(external_deps):
+        deps = sorted(external_deps[fqn])
+        broken_contracts.append({
+            "fqn": fqn,
+            "dependents": deps[:20],
+            "num_dependents": len(deps),
+        })
+
+    return {
+        "changed_files": list(changed_files),
+        "matched_files": matched_files,
+        "unmatched_files": unmatched_files,
+        "num_changed_entities": len(changed_entities),
+        "changed_entities": changed_entities,
+        "affected_components": affected_components,
+        "downstream_dependents": downstream_dependents,
+        "num_downstream": len(downstream_dependents),
+        "broken_contracts": broken_contracts,
+    }
