@@ -1,5 +1,7 @@
 """Tool: Extract the public API surface of a codebase."""
 
+from typing import Any
+
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.registry import tool
 
@@ -30,8 +32,10 @@ def _external_dependents(dep_graph: DependencyGraph) -> set[str]:
     """Find entities that have incoming edges from a different file.
 
     An entity is part of the structural public surface if something outside
-    its own file depends on it. This mirrors how ``explain_component`` derives
-    ``api_surface`` (incoming edges from outside a boundary).
+    its own file depends on it. This is the same kind of signal
+    ``explain_component`` uses to derive ``api_surface`` — incoming edges from
+    outside a boundary — but the boundary here is the *file*, not a recovered
+    component, so the two results differ for components spanning several files.
 
     Args:
         dep_graph: The dependency graph to inspect.
@@ -62,7 +66,7 @@ def api_surface(
     dep_graph: DependencyGraph,
     scope: str | None = None,
     include_members: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Extract only the public interface of a codebase.
 
     Public is *derived*, never read from a field (the graph has no visibility
@@ -109,12 +113,12 @@ def api_surface(
             top_level.append(fqn)
 
     # Group top-level entities by package.
-    packages: dict[str, list[dict]] = {}
+    packages: dict[str, list[dict[str, Any]]] = {}
     num_public = 0
 
     for fqn in sorted(top_level):
         entity = dep_graph.entities[fqn]
-        record: dict = {
+        record: dict[str, Any] = {
             "fqn": fqn,
             "name": entity.name,
             "kind": entity.kind,
@@ -126,7 +130,7 @@ def api_surface(
             record["interfaces"] = list(entity.interfaces)
 
         if include_members:
-            member_records: list[dict] = []
+            member_records: list[dict[str, Any]] = []
             for member_fqn in sorted(members_by_owner.get(fqn, [])):
                 member = dep_graph.entities[member_fqn]
                 member_records.append({

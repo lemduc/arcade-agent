@@ -1,5 +1,7 @@
 """Tool: Compute the upstream/downstream dependency cone of an entity or file."""
 
+from typing import Any
+
 from arcade_agent.algorithms.traversal import adjacency_with_relations, walk_cone
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.diff_impact import _paths_match
@@ -10,27 +12,50 @@ _VALID_DIRECTIONS = ("upstream", "downstream", "both")
 
 def _resolve_seeds(
     dep_graph: DependencyGraph, target: str
-) -> tuple[set[str], str | None]:
+) -> tuple[set[str], str | None, list[str]]:
     """Resolve a target (entity FQN or file path) to seed entity FQNs.
+
+    Resolution is ordered so that a precise target never picks up a neighbour:
+    an exact entity FQN wins, then an exact file path, then a path-suffix match
+    — but only when the suffix pins down exactly one file. A suffix matching
+    several distinct files (e.g. a bare ``models.py`` under both ``src/auth/``
+    and ``src/billing/``) is reported as ambiguous rather than silently unioned,
+    which would attribute one file's dependents to the other.
 
     Args:
         dep_graph: Dependency graph to resolve against.
         target: An entity FQN or a file path.
 
     Returns:
-        ``(seeds, matched_by)`` where ``matched_by`` is ``"entity"``, ``"file"``,
-        or ``None`` when nothing matched.
+        ``(seeds, matched_by, candidate_files)`` where ``matched_by`` is
+        ``"entity"``, ``"file"``, or ``None`` when nothing resolved.
+        ``candidate_files`` is non-empty only when the target was ambiguous, in
+        which case ``seeds`` is empty.
     """
     if target in dep_graph.entities:
-        return {target}, "entity"
-    seeds = {
+        return {target}, "entity", []
+
+    normalized = target.replace("\\", "/")
+    exact = {
+        fqn
+        for fqn, entity in dep_graph.entities.items()
+        if entity.file_path.replace("\\", "/") == normalized
+    }
+    if exact:
+        return exact, "file", []
+
+    matches = {
         fqn
         for fqn, entity in dep_graph.entities.items()
         if _paths_match(entity.file_path, target)
     }
-    if seeds:
-        return seeds, "file"
-    return set(), None
+    if not matches:
+        return set(), None, []
+
+    files = {dep_graph.entities[fqn].file_path for fqn in matches}
+    if len(files) > 1:
+        return set(), None, sorted(files)
+    return matches, "file", []
 
 
 def _cone_block(
@@ -39,7 +64,7 @@ def _cone_block(
     seeds: set[str],
     max_depth: int,
     max_nodes: int | None,
-) -> dict:
+) -> dict[str, Any]:
     """Walk one direction and roll reached entities up into a summary block.
 
     Args:
@@ -82,7 +107,7 @@ def dependency_cone(
     direction: str = "both",
     max_depth: int = 3,
     max_nodes: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Compute the dependency cone of an entity or file.
 
     Args:
@@ -95,8 +120,9 @@ def dependency_cone(
 
     Returns:
         Dict with the resolved seeds and an ``upstream``/``downstream`` block for
-        each requested direction; a clean empty result if nothing resolves, or an
-        error dict for an invalid ``direction``.
+        each requested direction; a clean empty result if nothing resolves; an
+        ``ambiguous`` result listing ``candidate_files`` when ``target`` matches
+        more than one file; or an error dict for an invalid ``direction``.
     """
     if direction not in _VALID_DIRECTIONS:
         return {
@@ -105,7 +131,21 @@ def dependency_cone(
             "valid_directions": list(_VALID_DIRECTIONS),
         }
 
-    seeds, matched_by = _resolve_seeds(dep_graph, target)
+    seeds, matched_by, candidate_files = _resolve_seeds(dep_graph, target)
+    if candidate_files:
+        return {
+            "target": target,
+            "matched_by": None,
+            "seed_entities": [],
+            "direction": direction,
+            "max_depth": max_depth,
+            "ambiguous": True,
+            "candidate_files": candidate_files,
+            "note": (
+                f"Target '{target}' matched {len(candidate_files)} distinct files; "
+                "pass a full path to disambiguate."
+            ),
+        }
     if not seeds:
         return {
             "target": target,
@@ -116,7 +156,7 @@ def dependency_cone(
             "note": f"No entity or file matched '{target}'.",
         }
 
-    result: dict = {
+    result: dict[str, Any] = {
         "target": target,
         "matched_by": matched_by,
         "seed_entities": sorted(seeds),

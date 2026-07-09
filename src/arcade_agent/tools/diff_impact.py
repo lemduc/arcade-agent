@@ -1,39 +1,34 @@
 """Tool: Map a set of changed files to their architectural impact."""
 
+from typing import Any
+
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.traversal import adjacency_with_relations, walk_cone
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.registry import tool
 
 
-def _basename(path: str) -> str:
-    """Return the final path segment of a slash- or backslash-separated path."""
-    normalized = path.replace("\\", "/")
-    return normalized.rsplit("/", 1)[-1]
-
-
 def _paths_match(entity_path: str, changed_file: str) -> bool:
     """Test whether a graph entity path refers to a changed file.
 
-    Matching is deliberately tolerant because file paths in the graph may be
-    relative, absolute, or bare simple names while a git diff yields
-    repo-relative paths. A match is reported when the two are equal, when one
-    is a path-suffix of the other, or when their basenames are equal.
+    Matching tolerates one path being rooted differently from the other: a
+    match is reported when the two are equal, or when one is a *path-suffix*
+    of the other on a segment boundary. Bare-basename equality is deliberately
+    NOT a match — parsers record repo-relative paths, so ``src/auth/models.py``
+    and ``src/billing/models.py`` are distinct files that must not be conflated.
 
     Args:
         entity_path: The ``file_path`` recorded on a graph entity.
         changed_file: A changed file path (e.g. from a git diff).
 
     Returns:
-        True if the entity path plausibly refers to the changed file.
+        True if the entity path refers to the changed file.
     """
     ep = entity_path.replace("\\", "/")
     cf = changed_file.replace("\\", "/")
     if ep == cf:
         return True
-    if ep.endswith("/" + cf) or cf.endswith("/" + ep):
-        return True
-    return _basename(ep) == _basename(cf)
+    return ep.endswith("/" + cf) or cf.endswith("/" + ep)
 
 
 @tool(
@@ -47,7 +42,7 @@ def diff_impact(
     changed_files: list[str],
     architecture: Architecture | None = None,
     max_depth: int = 3,
-) -> dict:
+) -> dict[str, Any]:
     """Assess the architectural blast radius of a set of changed files.
 
     Changed files are mapped to entities, then to their enclosing components,
@@ -55,8 +50,10 @@ def diff_impact(
     subset of changed entities that form a public contract for external callers.
 
     "Public" is derived structurally (never read from a field): an entity is a
-    public contract if it has incoming edges from entities outside the changed
-    files — the same signal ``explain_component`` uses for its API surface.
+    public contract if it has incoming edges from entities outside the *changed
+    files*. This is the same kind of signal ``explain_component`` uses for its
+    API surface, but against a different boundary — that tool tests membership
+    of a recovered component, not of the changed-file set.
 
     Args:
         dep_graph: Dependency graph to analyze against.

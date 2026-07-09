@@ -117,6 +117,58 @@ def test_max_nodes_truncates(sample_graph):
     assert result["downstream"]["num_nodes"] == 1
 
 
+def _collision_graph() -> DependencyGraph:
+    """Two unrelated files sharing the basename ``models.py``, one with a dependent."""
+    entities = {
+        n: Entity(
+            fqn=n, name="models", package=n.split(".")[0],
+            file_path=f"src/{n.split('.')[0]}/models.py",
+            kind="module", language="python",
+        )
+        for n in ("auth.models", "billing.models")
+    }
+    entities["auth.views"] = Entity(
+        fqn="auth.views", name="views", package="auth",
+        file_path="src/auth/views.py", kind="module", language="python",
+    )
+    return DependencyGraph(
+        entities=entities, edges=[Edge("auth.views", "auth.models", "import")]
+    )
+
+
+def test_ambiguous_file_target_reports_candidates():
+    # A bare basename matching two distinct files must not silently union them.
+    result = dependency_cone(_collision_graph(), "models.py", direction="downstream")
+    assert result["ambiguous"] is True
+    assert result["seed_entities"] == []
+    assert result["candidate_files"] == [
+        "src/auth/models.py",
+        "src/billing/models.py",
+    ]
+    assert "downstream" not in result
+
+
+def test_exact_file_target_resolves_only_that_file():
+    # An exact path must never be contaminated by a same-basename sibling.
+    result = dependency_cone(
+        _collision_graph(), "src/billing/models.py", direction="downstream"
+    )
+    assert result["matched_by"] == "file"
+    assert result["seed_entities"] == ["billing.models"]
+    # auth.views depends on auth.models, NOT billing.models.
+    assert result["downstream"]["num_nodes"] == 0
+
+
+def test_unambiguous_suffix_target_resolves():
+    # A partial path that pins down exactly one file is still usable.
+    result = dependency_cone(
+        _collision_graph(), "auth/models.py", direction="downstream"
+    )
+    assert result["matched_by"] == "file"
+    assert result["seed_entities"] == ["auth.models"]
+    assert {n["fqn"] for n in result["downstream"]["nodes"]} == {"auth.views"}
+
+
 def test_unresolved_target(sample_graph):
     result = dependency_cone(sample_graph, "does/not/exist.py")
     assert result["matched_by"] is None

@@ -1,5 +1,7 @@
 """Tool: Assemble the minimal set of files an agent should read for a task."""
 
+from typing import Any
+
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.find_relevant import _score_entity, _tokenize
@@ -57,11 +59,11 @@ def _matched_keywords(name: str, package: str, file_path: str, keywords: list[st
 
 
 def _assign(
-    info: dict[str, dict],
+    info: dict[str, dict[str, Any]],
     fqn: str,
     role: str,
     relevance: float,
-) -> dict:
+) -> dict[str, Any]:
     """Record or upgrade an entity's inclusion in the context.
 
     Relevance accumulates across signals; the strongest role (by rank) wins.
@@ -85,7 +87,7 @@ def _assign(
     return entry
 
 
-def _add_note(entry: dict, note: str) -> None:
+def _add_note(entry: dict[str, Any], note: str) -> None:
     """Append a de-duplicated relationship note to an entity entry.
 
     Args:
@@ -108,7 +110,7 @@ def context_for_task(
     task: str,
     architecture: Architecture | None = None,
     max_files: int = 15,
-) -> dict:
+) -> dict[str, Any]:
     """Assemble the minimal ranked set of files to read for a task.
 
     Seeds relevance by keyword-matching entity names, packages, and file paths,
@@ -141,7 +143,7 @@ def context_for_task(
         }
 
     entities = dep_graph.entities
-    info: dict[str, dict] = {}
+    info: dict[str, dict[str, Any]] = {}
 
     # -- 1. Seed on direct keyword matches -----------------------------------
     for fqn, entity in entities.items():
@@ -209,7 +211,7 @@ def context_for_task(
             _add_note(info[seed], f"depended on by {entities[dependent].name}")
 
     # -- 4. Aggregate entities into files ------------------------------------
-    files: dict[str, dict] = {}
+    files: dict[str, dict[str, Any]] = {}
     for fqn, entry in info.items():
         entity = entities[fqn]
         fpath = entity.file_path

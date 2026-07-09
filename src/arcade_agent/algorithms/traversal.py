@@ -6,6 +6,7 @@ on a plain adjacency mapping so they carry no dependency on the tool registry.
 
 from collections import deque
 from collections.abc import Iterable
+from typing import Any
 
 from arcade_agent.parsers.graph import DependencyGraph
 
@@ -39,7 +40,7 @@ def walk_cone(
     max_depth: int,
     max_nodes: int | None = None,
     valid_nodes: set[str] | None = None,
-) -> tuple[list[dict], bool]:
+) -> tuple[list[dict[str, Any]], bool]:
     """Breadth-first walk of a cone from ``seeds`` over ``adjacency``.
 
     A ``visited`` set pre-seeded with ``seeds`` both excludes the seeds from the
@@ -62,7 +63,7 @@ def walk_cone(
     """
     seed_list = list(seeds)
     visited: set[str] = set(seed_list)
-    reached: dict[str, dict] = {}
+    reached: dict[str, dict[str, Any]] = {}
     queue: deque[tuple[str, int, str | None]] = deque(
         (s, 0, None) for s in seed_list
     )

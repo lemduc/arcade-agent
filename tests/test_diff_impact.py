@@ -3,17 +3,12 @@
 import pytest
 
 from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
-from arcade_agent.tools.diff_impact import _basename, _paths_match, diff_impact
-
-
-def test_basename():
-    assert _basename("a/b/c.java") == "c.java"
-    assert _basename("c.java") == "c.java"
-    assert _basename("a\\b\\c.java") == "c.java"
+from arcade_agent.tools.diff_impact import _paths_match, diff_impact
 
 
 def test_paths_match_exact():
     assert _paths_match("MathHelper.java", "MathHelper.java")
+    assert _paths_match("a\\b\\c.java", "a/b/c.java")
 
 
 def test_paths_match_suffix():
@@ -21,12 +16,32 @@ def test_paths_match_suffix():
     assert _paths_match("src/main/java/MathHelper.java", "MathHelper.java")
 
 
-def test_paths_match_basename():
-    assert _paths_match("src/util/MathHelper.java", "other/MathHelper.java")
+def test_paths_match_rejects_basename_collision():
+    # Two unrelated files sharing a basename must not match: parsers record
+    # repo-relative paths, so a bare-basename equality test only over-matches.
+    assert not _paths_match("src/util/MathHelper.java", "other/MathHelper.java")
+    assert not _paths_match("src/auth/models.py", "src/billing/models.py")
 
 
 def test_paths_match_no_match():
     assert not _paths_match("MathHelper.java", "Calculator.java")
+
+
+def test_diff_impact_ignores_unrelated_file_with_same_basename():
+    # Changing src/auth/models.py must not implicate src/billing/models.py.
+    entities = {
+        "auth.models": Entity(
+            fqn="auth.models", name="models", package="auth",
+            file_path="src/auth/models.py", kind="module", language="python",
+        ),
+        "billing.models": Entity(
+            fqn="billing.models", name="models", package="billing",
+            file_path="src/billing/models.py", kind="module", language="python",
+        ),
+    }
+    graph = DependencyGraph(entities=entities, edges=[])
+    result = diff_impact(graph, ["src/auth/models.py"])
+    assert [e["fqn"] for e in result["changed_entities"]] == ["auth.models"]
 
 
 def test_diff_impact_happy_path(sample_graph, sample_architecture):
