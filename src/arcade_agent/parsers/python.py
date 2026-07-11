@@ -11,6 +11,17 @@ from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 
 PYTHON_LANGUAGE = Language(tspython.language())
 
+# Only these syntax nodes expose annotation fields in tree-sitter-python.
+# Keeping this table explicit avoids two child_by_field_name() calls for every
+# child in every declaration subtree. On large Python repositories that was
+# millions of redundant C-extension round trips in the cold parse path.
+_ANNOTATION_FIELDS: dict[str, tuple[str, ...]] = {
+    "assignment": ("type",),
+    "function_definition": ("return_type",),
+    "typed_default_parameter": ("type",),
+    "typed_parameter": ("type",),
+}
+
 
 def _get_text(node) -> str:
     if node is None:
@@ -193,13 +204,18 @@ def _extract_referenced_names(node) -> set[str]:
         elif n.type == "decorator":
             for child in n.children:
                 if child.type in ("identifier", "attribute", "call"):
-                    names.update(_extract_referenced_names(child))
+                    stack.append(child)
             continue
+
+        annotation_fields = _ANNOTATION_FIELDS.get(n.type)
+        annotation_nodes = (
+            {n.child_by_field_name(field) for field in annotation_fields}
+            if annotation_fields
+            else ()
+        )
         for child in n.children:
             # Skip type annotation subtrees — they are not runtime deps
-            if child.parent and child == child.parent.child_by_field_name("type"):
-                continue
-            if child.parent and child == child.parent.child_by_field_name("return_type"):
+            if child in annotation_nodes:
                 continue
             stack.append(child)
     return names
