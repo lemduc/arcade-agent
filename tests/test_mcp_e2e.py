@@ -93,6 +93,26 @@ class TestMcpE2E:
         assert recover_result["num_components"] > 0
         assert recover_result["type"] == "Architecture"
 
+    def test_async_analyze_returns_reusable_pipeline_sessions(self, server):
+        result = _call(server, "analyze", {
+            "source": _REPO_ROOT,
+            "language": "python",
+            "use_cache": False,
+        })
+
+        assert result["type"] == "AnalysisResult"
+        assert result["graph"]["num_entities"] > 0
+        assert result["architecture"]["num_components"] > 0
+        assert result["num_metrics"] > 0
+
+        graph_sid = result["graph"]["session_id"]
+        architecture_sid = result["architecture"]["session_id"]
+        query_result = _call(server, "compute_metrics", {
+            "architecture": architecture_sid,
+            "dep_graph": graph_sid,
+        })
+        assert query_result["session_id"]
+
     def test_list_sessions_populated(self, server):
         result = _call(server, "list_sessions", {})
         assert "sessions" in result
@@ -130,4 +150,3 @@ class TestMcpE2E:
         """No budget flag should appear when max_tokens is not set."""
         result = _call(server, "parse", {"source_path": _REPO_ROOT, "language": "python"})
         assert "_budget_truncated" not in result
-
