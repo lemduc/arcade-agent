@@ -120,6 +120,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         instructions=(
             "Software architecture analysis toolkit. "
             "Tools produce complex results stored in a session. "
+            "Use 'analyze' for a non-blocking end-to-end pipeline, or compose individual tools. "
             "Use session IDs from previous tool outputs as inputs to subsequent tools. "
             "For example: call 'parse' to get a session_id, then pass that session_id "
             "as dep_graph to 'recover'."
@@ -194,6 +195,50 @@ def _build_server():  # type: ignore[no-untyped-def]
             use_cache=use_cache,
         )
         summary = _make_summary(graph, "DependencyGraph")
+        return json.dumps(_apply_budget(summary, max_tokens), indent=2)
+
+    # -- analyze ---------------------------------------------------------------
+
+    @server.tool()
+    async def analyze(
+        source: str,
+        language: str | None = None,
+        source_root: str | None = None,
+        exclude_tests: bool = True,
+        algorithm: str = "pkg",
+        num_clusters: int | None = None,
+        use_cache: bool = True,
+        use_llm: bool = False,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Run the complete architecture analysis pipeline asynchronously.
+
+        Ingest, parse, and recovery run in dependency order. Smell detection
+        and metric computation run concurrently. The returned session IDs can
+        be passed to the existing fine-grained MCP tools.
+        """
+        from arcade_agent.tools.analyze import analyze as _analyze
+
+        result = await _analyze(
+            source=source,
+            language=language,
+            source_root=source_root,
+            exclude_tests=exclude_tests,
+            algorithm=algorithm,
+            num_clusters=num_clusters,
+            use_cache=use_cache,
+            use_llm=use_llm,
+        )
+        summary = {
+            "type": "AnalysisResult",
+            "repository": _make_summary(result.repository, "IngestedRepo"),
+            "graph": _make_summary(result.graph, "DependencyGraph"),
+            "architecture": _make_summary(result.architecture, "Architecture"),
+            "smells": _store(result.smells, "SmellInstances"),
+            "metrics": _store(result.metrics, "MetricResults"),
+            "num_smells": len(result.smells),
+            "num_metrics": len(result.metrics),
+        }
         return json.dumps(_apply_budget(summary, max_tokens), indent=2)
 
     # -- recover ---------------------------------------------------------------
