@@ -23,7 +23,7 @@ inputs:
     required: false
     default: "."
   language:
-    description: Optional language override (java, python, typescript, c).
+    description: Optional language override (java, python, typescript, c, go, kotlin).
     required: false
     default: ""
   repo-name:

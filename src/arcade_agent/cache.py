@@ -44,6 +44,7 @@ def cache_key(source_path: str, language: str | None, files: list[str] | None) -
         # Hash all source-like files under root
         file_paths = sorted(str(f) for f in root.rglob("*") if f.is_file() and f.suffix in {
             ".java", ".py", ".c", ".cpp", ".h", ".hpp", ".ts", ".tsx", ".js", ".jsx",
+            ".go", ".kt", ".kts",
         })
 
     for fp in file_paths:

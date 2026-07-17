@@ -39,6 +39,7 @@ _LANG_EXTENSIONS: dict[str, list[str]] = {
     "typescript": [".ts", ".tsx", ".js", ".jsx"],
     "c": [".c", ".h", ".cpp", ".hpp", ".cc", ".cxx"],
     "go": [".go"],
+    "kotlin": [".kt", ".kts"],
 }
 
 # Reverse mapping
@@ -203,7 +204,7 @@ def ingest(
 
     Args:
         source: Git repo URL or local directory path.
-        language: Override language detection (java, python, typescript, c).
+        language: Override language detection (java, python, typescript, c, go, kotlin).
         work_dir: Directory to clone into. Uses temp dir if None.
         exclude_tests: Exclude test/vendor/build directories (default: True).
         source_root: Override source root (e.g., 'src/main/java'). Auto-detected if None.
