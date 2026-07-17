@@ -274,3 +274,138 @@ def test_ingest_discovers_kotlin_files(fixtures_dir):
         assert any(path.name == "Calculator.kt" for path in repo.source_files)
     finally:
         repo.cleanup()
+
+
+# ---------------------------------------------------------------------------
+# Embabel-grounded regressions (minimized snippets from embabel-agent patterns)
+# ---------------------------------------------------------------------------
+
+
+def test_embabel_annotation_classes_extracted(kotlin_embabel_pattern_files, fixtures_dir):
+    """annotation class (+ nested) from LlmTool/annotations.kt must still be entities.
+
+    tree-sitter-kotlin may set has_error on some annotation ASTs; the parser must
+    remain resilient and surface the declarations for architecture recovery.
+    """
+    root = fixtures_dir / "kotlin_embabel_patterns"
+    graph = KotlinParser().parse(kotlin_embabel_pattern_files, root)
+
+    assert "com.embabel.patterns.annotation.LlmTool" in graph.entities
+    assert "com.embabel.patterns.annotation.LlmTool.Meta" in graph.entities
+    assert "com.embabel.patterns.annotation.LlmTool.Param" in graph.entities
+    assert "com.embabel.patterns.annotation.EmbabelComponent" in graph.entities
+    # Grammar currently surfaces annotations as class_declaration → kind "class".
+    assert graph.entities["com.embabel.patterns.annotation.LlmTool"].kind in {
+        "class",
+        "annotation",
+    }
+
+
+def test_embabel_backtick_method_names_do_not_drop_outer_class(
+    kotlin_embabel_pattern_files, fixtures_dir
+):
+    root = fixtures_dir / "kotlin_embabel_patterns"
+    graph = KotlinParser().parse(kotlin_embabel_pattern_files, root)
+
+    assert "com.embabel.patterns.backtick.CustomValidationAnnotationTest" in graph.entities
+    assert (
+        "com.embabel.patterns.backtick.CustomValidationAnnotationTest.normalMethod"
+        in graph.entities
+    )
+
+
+def test_embabel_property_accessor_annotations_still_extract_interfaces(
+    kotlin_embabel_pattern_files, fixtures_dir
+):
+    root = fixtures_dir / "kotlin_embabel_patterns"
+    graph = KotlinParser().parse(kotlin_embabel_pattern_files, root)
+
+    assert "com.embabel.patterns.accessors.PromptElement" in graph.entities
+    assert "com.embabel.patterns.accessors.PromptContributor" in graph.entities
+    assert graph.entities["com.embabel.patterns.accessors.PromptElement"].kind == "interface"
+    edge_tuples = {(e.source, e.target, e.relation) for e in graph.edges}
+    assert (
+        "com.embabel.patterns.accessors.PromptContributor",
+        "com.embabel.patterns.accessors.PromptElement",
+        "implements",
+    ) in edge_tuples
+
+
+def test_embabel_extension_only_file_has_functions_without_receiver_edge(
+    kotlin_embabel_pattern_files, fixtures_dir
+):
+    """Documented gap: extension functions are entities, but not linked to receiver."""
+    root = fixtures_dir / "kotlin_embabel_patterns"
+    graph = KotlinParser().parse(kotlin_embabel_pattern_files, root)
+
+    assert "com.embabel.patterns.extensions.PromptRunner" in graph.entities
+    assert "com.embabel.patterns.extensions.withDocument" in graph.entities
+    assert graph.entities["com.embabel.patterns.extensions.withDocument"].kind == "function"
+
+    receiver_edges = [
+        e
+        for e in graph.edges
+        if e.source == "com.embabel.patterns.extensions.withDocument"
+        and e.target == "com.embabel.patterns.extensions.PromptRunner"
+    ]
+    assert receiver_edges == []
+
+
+def test_embabel_top_level_val_file_contributes_no_type_from_that_file(
+    kotlin_embabel_pattern_files, fixtures_dir
+):
+    root = fixtures_dir / "kotlin_embabel_patterns"
+    graph = KotlinParser().parse(kotlin_embabel_pattern_files, root)
+
+    # PersonaSpec lives in a sibling file and is discovered.
+    assert "com.embabel.patterns.toplevel.PersonaSpec" in graph.entities
+    # Top-level vals are not modeled as entities today.
+    assert "com.embabel.patterns.toplevel.MARVIN" not in graph.entities
+    personas_types = [
+        e
+        for e in graph.entities.values()
+        if e.kind in {"class", "interface", "object", "enum"}
+        and e.file_path.endswith("toplevel/Personas.kt")
+    ]
+    assert personas_types == []
+
+
+def test_embabel_annotation_only_file_still_yields_annotation_entity(
+    kotlin_embabel_pattern_files, fixtures_dir
+):
+    """Meta-annotated annotation-only files (Provided.kt) must not disappear.
+
+    tree-sitter often emits annotated_expression/infix_expression instead of
+    class_declaration when `@Target`/`@Retention` wrap `annotation class`.
+    """
+    root = fixtures_dir / "kotlin_embabel_patterns"
+    graph = KotlinParser().parse(kotlin_embabel_pattern_files, root)
+    assert "com.embabel.patterns.provided.Provided" in graph.entities
+
+
+def test_embabel_unresolved_jdk_superclass_does_not_invent_extends_edge(
+    kotlin_embabel_pattern_files, fixtures_dir
+):
+    root = fixtures_dir / "kotlin_embabel_patterns"
+    graph = KotlinParser().parse(kotlin_embabel_pattern_files, root)
+
+    exc = graph.entities["com.embabel.patterns.jdk.SpecialReturnException"]
+    assert exc.superclass == "RuntimeException"
+    extends_edges = [
+        e
+        for e in graph.edges
+        if e.source == "com.embabel.patterns.jdk.SpecialReturnException"
+        and e.relation == "extends"
+    ]
+    assert extends_edges == []
+
+
+def test_embabel_pattern_corpus_parses_without_throwing(
+    kotlin_embabel_pattern_files, fixtures_dir
+):
+    root = fixtures_dir / "kotlin_embabel_patterns"
+    graph = KotlinParser().parse(kotlin_embabel_pattern_files, root)
+    assert graph.num_entities > 0
+    assert any(
+        e.file_path.endswith("annotation/LlmTool.kt") for e in graph.entities.values()
+    )

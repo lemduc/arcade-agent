@@ -163,7 +163,50 @@ def _extract_type_declarations(root_node: Node) -> list[dict]:
             if decl:
                 decls.append(decl)
                 decls.extend(_extract_nested_types(decl))
+        else:
+            # Meta-annotated `annotation class` can be parsed as annotated_expression
+            # / infix_expression instead of class_declaration (seen in embabel).
+            for fallback in _extract_annotation_classes_from_misc(node):
+                decls.append(fallback)
     return decls
+
+
+def _extract_annotation_classes_from_misc(node: Node) -> list[dict]:
+    """Recover annotation class names from non-class_declaration AST shapes."""
+    found: list[dict] = []
+
+    def visit(n: Node) -> None:
+        if n.type == "class_declaration":
+            decl = _parse_type_declaration(n)
+            if decl:
+                found.append(decl)
+                found.extend(_extract_nested_types(decl))
+            return
+        if n.type == "infix_expression":
+            idents = [c for c in n.children if c.type == "identifier"]
+            if (
+                len(idents) >= 3
+                and _get_text(idents[0]) == "annotation"
+                and _get_text(idents[1]) == "class"
+            ):
+                name = _get_text(idents[2])
+                found.append(
+                    {
+                        "name": name,
+                        "kind": "class",
+                        "superclass": None,
+                        "interfaces": [],
+                        "node": n,
+                        "is_data": False,
+                        "is_sealed": False,
+                    }
+                )
+                return
+        for child in n.children:
+            visit(child)
+
+    visit(node)
+    return found
 
 
 def _extract_nested_types(owner: dict) -> list[dict]:
