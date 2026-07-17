@@ -207,6 +207,43 @@ class Child : B()
     assert ("com.example.app.Child", "com.example.app.Base", "extends") in edge_tuples
 
 
+def test_kotlin_parser_resolves_qualified_superclass_and_interface(tmp_path: Path):
+    """Qualified parent names must not be truncated to the first identifier."""
+    util = tmp_path / "com" / "example" / "util"
+    app = tmp_path / "com" / "example" / "app"
+    util.mkdir(parents=True)
+    app.mkdir(parents=True)
+    (util / "MathHelper.kt").write_text(
+        "package com.example.util\nopen class MathHelper\ninterface RunnableLike\n"
+    )
+    (app / "Child.kt").write_text(
+        """
+package com.example.app
+
+class Child : com.example.util.MathHelper(), com.example.util.RunnableLike
+""".strip()
+        + "\n"
+    )
+    graph = KotlinParser().parse(
+        [util / "MathHelper.kt", app / "Child.kt"],
+        tmp_path,
+    )
+    child = graph.entities["com.example.app.Child"]
+    assert child.superclass == "com.example.util.MathHelper"
+    assert "com.example.util.RunnableLike" in child.interfaces
+    edge_tuples = {(e.source, e.target, e.relation) for e in graph.edges}
+    assert (
+        "com.example.app.Child",
+        "com.example.util.MathHelper",
+        "extends",
+    ) in edge_tuples
+    assert (
+        "com.example.app.Child",
+        "com.example.util.RunnableLike",
+        "implements",
+    ) in edge_tuples
+
+
 def test_kotlin_parser_skips_unreadable_files(tmp_path: Path):
     missing = tmp_path / "Missing.kt"
     empty = tmp_path / "Empty.kt"

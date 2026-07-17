@@ -110,11 +110,14 @@ def _extract_delegation_types(node: Node) -> tuple[str | None, list[str]]:
 
 
 def _first_user_type_name(node: Node) -> str | None:
+    """Return a simple or dotted type name from a user_type subtree.
+
+    Kotlin parents are often qualified (`com.example.Base`). The grammar stores
+    that as multiple `identifier` children under `user_type`, so we join them.
+    """
     if node.type == "user_type":
-        for child in node.children:
-            if child.type == "identifier":
-                return _get_text(child)
-        return None
+        parts = [_get_text(child) for child in node.children if child.type == "identifier"]
+        return ".".join(parts) if parts else None
     for child in node.children:
         found = _first_user_type_name(child)
         if found:
@@ -263,6 +266,10 @@ def _resolve_name(
         if aliased in entities:
             return aliased
 
+    # Already-qualified names (e.g. com.example.util.MathHelper)
+    if "." in simple_name and simple_name in entities:
+        return simple_name
+
     for imp in source_entity.imports:
         if imp.endswith(f".{simple_name}") and imp in entities:
             return imp
@@ -271,9 +278,9 @@ def _resolve_name(
     if same_pkg_fqn in entities:
         return same_pkg_fqn
 
-    # Nested types referenced by simple leaf name (e.g. Ok -> Result.Ok)
-    if simple_name in fqn_index:
-        return fqn_index[simple_name]
+    leaf = simple_name.split(".")[-1]
+    if leaf in fqn_index:
+        return fqn_index[leaf]
 
     return None
 
