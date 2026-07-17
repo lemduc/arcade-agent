@@ -179,7 +179,8 @@ def _build_server():  # type: ignore[no-untyped-def]
 
         Args:
             source_path: Root directory of the project.
-            language: Language to parse (java, python, c, typescript, go, kotlin). Auto-detected if None.
+            language: Language to parse (java, python, c, typescript, go, kotlin).
+                Auto-detected if None.
             files: Specific files to parse. Discovers all if None.
             use_cache: Return cached results when source files haven't changed.
             max_tokens: Optional token budget for the response.
