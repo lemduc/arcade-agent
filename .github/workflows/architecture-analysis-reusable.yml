@@ -24,7 +24,12 @@ on:
         type: string
         default: "."
       language:
-        description: Optional language override (java, python, typescript, c, go, kotlin).
+        description: Optional language override (java, python, typescript, c, go, kotlin, multi).
+        required: false
+        type: string
+        default: ""
+      languages:
+        description: Optional comma-separated polyglot languages (e.g. java,kotlin).
         required: false
         type: string
         default: ""
@@ -142,12 +147,15 @@ jobs:
         env:
           SOURCE_PATH: ${{ inputs.source-path }}
           LANGUAGE: ${{ inputs.language }}
+          LANGUAGES: ${{ inputs.languages }}
           REPO_NAME: ${{ inputs.repo-name }}
           PRIMARY_ALGORITHM: ${{ inputs.primary-algorithm }}
           FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
         run: |
           ARGS=(--source "target-repo/${SOURCE_PATH}")
-          if [ -n "${LANGUAGE}" ]; then
+          if [ -n "${LANGUAGES}" ]; then
+            ARGS+=(--languages "${LANGUAGES}")
+          elif [ -n "${LANGUAGE}" ]; then
             ARGS+=(--language "${LANGUAGE}")
           fi
           if [ -n "${REPO_NAME}" ]; then
@@ -167,12 +175,15 @@ jobs:
         env:
           SOURCE_PATH: ${{ inputs.source-path }}
           LANGUAGE: ${{ inputs.language }}
+          LANGUAGES: ${{ inputs.languages }}
           REPO_NAME: ${{ inputs.repo-name }}
           WCA_NUM_CLUSTERS: ${{ inputs.wca-num-clusters }}
           FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
         run: |
           ARGS=(--source "target-repo/${SOURCE_PATH}")
-          if [ -n "${LANGUAGE}" ]; then
+          if [ -n "${LANGUAGES}" ]; then
+            ARGS+=(--languages "${LANGUAGES}")
+          elif [ -n "${LANGUAGE}" ]; then
             ARGS+=(--language "${LANGUAGE}")
           fi
           if [ -n "${REPO_NAME}" ]; then

@@ -1,0 +1,43 @@
+diff --git a/src/arcade_agent/algorithms/architecture.py b/src/arcade_agent/algorithms/architecture.py
+index 4b53725..f1615dc 100644
+--- a/src/arcade_agent/algorithms/architecture.py
++++ b/src/arcade_agent/algorithms/architecture.py
+@@ -23,21 +23,32 @@ class Architecture:
+     algorithm: str = ""  # pkg, wca, acdc, llm
+     metadata: dict = field(default_factory=dict)
+ 
++    def membership(self) -> dict[str, str]:
++        """Build an entity-FQN → component-name index.
++
++        O(n) to build, O(1) per lookup. Computed fresh on each call so it can
++        never go stale if components are mutated; callers doing many lookups
++        should call this once and reuse the dict.
++        """
++        return {
++            fqn: comp.name
++            for comp in self.components
++            for fqn in comp.entities
++        }
++
+     def component_of(self, fqn: str) -> str | None:
+         """Find which component an entity belongs to."""
+-        for comp in self.components:
+-            if fqn in comp.entities:
+-                return comp.name
+-        return None
++        return self.membership().get(fqn)
+ 
+     def component_dependencies(
+         self, dep_graph: DependencyGraph
+     ) -> list[tuple[str, str]]:
+         """Compute component-level dependencies from entity-level edges."""
++        membership = self.membership()
+         comp_edges: set[tuple[str, str]] = set()
+         for edge in dep_graph.edges:
+-            src_comp = self.component_of(edge.source)
+-            tgt_comp = self.component_of(edge.target)
++            src_comp = membership.get(edge.source)
++            tgt_comp = membership.get(edge.target)
+             if src_comp and tgt_comp and src_comp != tgt_comp:
+                 comp_edges.add((src_comp, tgt_comp))
+         return sorted(comp_edges)
