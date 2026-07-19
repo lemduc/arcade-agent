@@ -77,3 +77,26 @@ def test_python_parser_keeps_decorator_edges(tmp_path):
 
     assert "pkg.service.run" in graph.entities
     assert ("pkg.service.run", "pkg.registry.tool", "import") in graph.to_edge_tuples()
+
+
+def test_python_parser_skips_annotation_only_import_edges(tmp_path):
+    package_dir = tmp_path / "pkg"
+    package_dir.mkdir()
+
+    models_path = package_dir / "models.py"
+    models_path.write_text("class User:\n    pass\n")
+    service_path = package_dir / "service.py"
+    service_path.write_text(
+        "from pkg.models import User\n\n"
+        "def annotation_only(value: User) -> User:\n"
+        "    result: User = value\n"
+        "    return result\n\n"
+        "def runtime_use():\n"
+        "    return User()\n"
+    )
+
+    graph = PythonParser().parse([models_path, service_path], tmp_path)
+    edges = graph.to_edge_tuples()
+
+    assert ("pkg.service.annotation_only", "pkg.models.User", "import") not in edges
+    assert ("pkg.service.runtime_use", "pkg.models.User", "import") in edges
