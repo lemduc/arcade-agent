@@ -21,6 +21,11 @@ try:
 except ImportError:
     pass
 
+try:
+    import arcade_agent.parsers.kotlin  # noqa: F401
+except ImportError:
+    pass
+
 from arcade_agent.parsers.base import LanguageParser, get_parser
 
 __all__ = ["LanguageParser", "get_parser"]

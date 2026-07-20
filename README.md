@@ -106,6 +106,7 @@ smell burden, or another architectural pressure.
 - C/C++ (full support)
 - TypeScript/JavaScript (full support)
 - Go (full support)
+- Kotlin (structural support via optional `[languages]` extra; import + inheritance graph)
 
 ## Example: ARCADE Core
 
@@ -289,7 +290,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
-| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full) |
+| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |

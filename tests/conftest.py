@@ -21,6 +21,16 @@ def java_files():
 
 
 @pytest.fixture
+def kotlin_files():
+    return sorted((FIXTURES_DIR / "kotlin_project").rglob("*.kt"))
+
+
+@pytest.fixture
+def kotlin_embabel_pattern_files():
+    return sorted((FIXTURES_DIR / "kotlin_embabel_patterns").rglob("*.kt"))
+
+
+@pytest.fixture
 def python_files():
     return sorted(FIXTURES_DIR.glob("*.py"))
 
