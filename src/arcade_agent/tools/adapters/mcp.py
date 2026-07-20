@@ -75,6 +75,10 @@ def _make_summary(obj: Any, label: str) -> dict:
         summary["num_files"] = len(obj.source_files)
     if hasattr(obj, "language"):
         summary["language"] = obj.language
+    if hasattr(obj, "languages"):
+        langs = getattr(obj, "languages")
+        if langs:
+            summary["languages"] = list(langs)
     if hasattr(obj, "name") and isinstance(getattr(obj, "name", None), str):
         summary["name"] = obj.name
     if hasattr(obj, "version"):
@@ -134,6 +138,7 @@ def _build_server():  # type: ignore[no-untyped-def]
     def ingest(
         source: str,
         language: str | None = None,
+        languages: list[str] | None = None,
         work_dir: str | None = None,
         exclude_tests: bool = True,
         source_root: str | None = None,
@@ -146,7 +151,10 @@ def _build_server():  # type: ignore[no-untyped-def]
 
         Args:
             source: Git repo URL or local directory path.
-            language: Override language detection (java, python, c, typescript, go, kotlin).
+            language: Override language detection (java, python, c, typescript,
+                go, kotlin, or "multi" for every detected language).
+            languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).
+                Mutually exclusive with language.
             work_dir: Directory to clone into. Uses temp dir if None.
             exclude_tests: Exclude test/vendor/build directories (default True).
             source_root: Override source root (e.g. 'src/main/java').
@@ -157,6 +165,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         result = _ingest(
             source=source,
             language=language,
+            languages=languages,
             work_dir=work_dir,
             exclude_tests=exclude_tests,
             source_root=source_root,
@@ -170,6 +179,7 @@ def _build_server():  # type: ignore[no-untyped-def]
     def parse(
         source_path: str,
         language: str | None = None,
+        languages: list[str] | None = None,
         files: list[str] | None = None,
         use_cache: bool = True,
         max_tokens: int | None = None,
@@ -181,8 +191,11 @@ def _build_server():  # type: ignore[no-untyped-def]
 
         Args:
             source_path: Root directory of the project.
-            language: Language to parse (java, python, c, typescript, go, kotlin).
-                Auto-detected if None.
+            language: Language to parse (java, python, c, typescript, go, kotlin),
+                or "multi" to parse every detected language and relink
+                cross-language edges.
+            languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).
+                Mutually exclusive with language.
             files: Specific files to parse. Discovers all if None.
             use_cache: Return cached results when source files haven't changed.
             max_tokens: Optional token budget for the response.
@@ -192,6 +205,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         graph = _parse(
             source_path=source_path,
             language=language,
+            languages=languages,
             files=files,
             use_cache=use_cache,
         )

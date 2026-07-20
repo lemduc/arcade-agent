@@ -65,4 +65,5 @@ class DependencyGraph:
             packages.setdefault(pkg, []).extend(fqns)
         for pkg, fqns in other.packages.items():
             packages.setdefault(pkg, []).extend(fqns)
+        packages = {pkg: list(dict.fromkeys(fqns)) for pkg, fqns in packages.items()}
         return DependencyGraph(entities=entities, edges=edges, packages=packages)

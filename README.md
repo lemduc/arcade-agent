@@ -318,7 +318,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
-| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural) |
+| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural); polyglot merge+relink via `languages=[...]` / `language="multi"` |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |

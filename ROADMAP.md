@@ -45,7 +45,7 @@ Handle real-world polyglot monorepos.
 - [x] **16a2. Kotlin parser** — Shipped (`parsers/kotlin.py`) for JVM/Kotlin-first repos (e.g. embabel-agent).
 - [ ] **16b. Rust parser** — Still open. High-demand language for agent-assisted development.
 - [x] **17. Incremental parsing** — Content-hash extract cache shipped in #9 (`incremental.py`), wired for the Python parser only; extending to the other two-pass parsers is follow-up.
-- [ ] **18. Cross-language dependency tracking** — Java↔Python via gRPC, TS frontend↔Java backend, etc.
+- [x] **18. Cross-language dependency tracking** — MVP: multi-language ingest/parse (`languages=[...]` / `language="multi"`) merges per-language graphs and relinks import/extends/implements across FQN space (Java↔Kotlin first; same mechanism for other same-FQN or import-linked pairs). Broader RPC/IDL bridges (gRPC stubs, OpenAPI) remain follow-up.
 
 ## Phase 6 — Agent Protocol Integration
 
@@ -60,7 +60,7 @@ Work everywhere agents work.
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1–9, 12, 13, 14, 15, 16a, 17 | Phases 1–2 + TS/JS & Go parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface` |
+| **Done** | 1–9, 12, 13, 14, 15, 16a, 16a2, 17, 18 (MVP) | Phases 1–2 + TS/JS & Go & Kotlin parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface`, polyglot merge+relink |
 | **Now** | 10 | Architectural changelog |
 | **Next** | 11, 16b | Component ownership, Rust parser |
-| **Then** | 18–22 | Cross-language tracking, ecosystem breadth |
+| **Then** | 19–22 | Ecosystem breadth (OpenAI / LangChain / Claude SDK / IDE) |

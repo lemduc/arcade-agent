@@ -100,7 +100,15 @@ def main() -> None:
     parser.add_argument(
         "--language",
         default="",
-        help="Optional language override (java, python, typescript, c, go, kotlin)",
+        help=(
+            "Optional language override (java, python, typescript, c, go, kotlin, "
+            "or multi for every detected language)"
+        ),
+    )
+    parser.add_argument(
+        "--languages",
+        default="",
+        help="Comma-separated polyglot languages (e.g. java,kotlin)",
     )
     parser.add_argument(
         "--repo-name",
@@ -140,21 +148,33 @@ def main() -> None:
 
     source = str(Path(args.source).resolve())
     language = args.language or None
+    languages = [part.strip() for part in args.languages.split(",") if part.strip()] or None
 
     print(f"[1/5] Ingesting {source}...")
-    repo = ingest(source, language=language)
-    print(f"  Found {len(repo.source_files)} source files")
+    repo = ingest(source, language=language, languages=languages)
+    print(
+        f"  Found {len(repo.source_files)} source files "
+        f"(languages={repo.languages or [repo.language]})"
+    )
 
     if not repo.source_files:
         print("  No source files found. Exiting.")
         sys.exit(1)
 
     print("[2/5] Parsing dependencies...")
-    raw_graph = parse(
-        str(repo.path),
-        language=repo.language or language or "python",
-        files=[str(f) for f in repo.source_files],
-    )
+    parse_files = [str(f) for f in repo.source_files]
+    if len(repo.languages) > 1:
+        raw_graph = parse(
+            str(repo.path),
+            languages=repo.languages,
+            files=parse_files,
+        )
+    else:
+        raw_graph = parse(
+            str(repo.path),
+            language=repo.language or language or "python",
+            files=parse_files,
+        )
     graph = (
         _filter_non_architectural_entities(raw_graph)
         if args.filter_non_architectural_helpers
@@ -182,6 +202,7 @@ def main() -> None:
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "repo_name": args.repo_name or repo.name,
         "language": repo.language or language,
+        "languages": repo.languages,
         "commit_sha": os.environ.get("GITHUB_SHA", "local"),
         "ref": os.environ.get("GITHUB_REF", "local"),
         "algorithm": args.algorithm,
