@@ -18,10 +18,10 @@ Provides composable tools for parsing source code, recovering architecture, dete
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,languages]"
 
 # With MCP server support (for AI agent integration)
-pip install -e ".[mcp,dev]"
+pip install -e ".[mcp,dev,languages]"
 ```
 
 ## Quick Start
@@ -130,6 +130,9 @@ smell burden, or another architectural pressure.
 - TypeScript/JavaScript (full support)
 - Go (full support)
 - Kotlin (structural support via optional `[languages]` extra; import + inheritance graph)
+- Rust (structs, enums, unions, traits, type aliases, functions, methods,
+  imports, qualified references, trait inheritance/implementations, and Cargo
+  workspaces)
 
 ## Example: ARCADE Core
 
@@ -318,7 +321,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
-| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural) |
+| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go, Rust (full); Kotlin (structural) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |

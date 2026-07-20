@@ -1,0 +1,630 @@
+"""Rust parser using tree-sitter.
+
+The parser follows Rust's file-module convention (``lib.rs``/``main.rs`` at
+the crate root, ``mod.rs`` for a directory module) and extracts structs,
+enums, unions, traits, type aliases, functions, and methods.  A second pass
+resolves ``use`` declarations, same-module references, qualified paths, and
+trait inheritance/implementations into dependency edges. Cargo workspaces are
+kept intact and each member crate gets a stable graph prefix.
+"""
+
+from __future__ import annotations
+
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import tree_sitter_rust as tsrust
+from tree_sitter import Language, Node, Parser
+
+from arcade_agent.parsers.base import LanguageParser, register_parser
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
+
+RUST_LANGUAGE = Language(tsrust.language())
+
+_MAX_FILE_BYTES = 1_000_000
+_TYPE_ITEMS = {
+    "struct_item": "struct",
+    "enum_item": "enum",
+    "union_item": "union",
+    "trait_item": "trait",
+    "type_item": "type",
+}
+
+
+@dataclass(frozen=True)
+class _Import:
+    path: tuple[str, ...]
+    alias: str
+    wildcard: bool = False
+
+    @property
+    def display(self) -> str:
+        suffix = "::*" if self.wildcard else ""
+        return "::".join(self.path) + suffix
+
+
+@dataclass
+class _References:
+    simple: set[str]
+    qualified: set[tuple[str, ...]]
+
+
+@dataclass
+class _PendingMethod:
+    name: str
+    references: _References
+
+
+@dataclass
+class _PendingImpl:
+    owner_path: tuple[str, ...]
+    trait_path: tuple[str, ...]
+    generic_parameters: frozenset[str]
+    module: tuple[str, ...]
+    crate: tuple[str, ...]
+    imports: list[_Import]
+    rel_path: str
+    methods: list[_PendingMethod]
+
+
+def _get_text(node: Node | None) -> str:
+    raw_text = None if node is None else node.text
+    return "" if raw_text is None else raw_text.decode(errors="replace")
+
+
+def _identifier(text: str) -> str:
+    """Normalize raw Rust identifiers (``r#type`` -> ``type``)."""
+    return text[2:] if text.startswith("r#") else text
+
+
+def _cargo_data(directory: Path) -> dict[str, Any]:
+    manifest = directory / "Cargo.toml"
+    try:
+        return tomllib.loads(manifest.read_text()) if manifest.is_file() else {}
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def _crate_context(file_path: Path, root: Path, is_workspace: bool) -> tuple[Path, tuple[str, ...]]:
+    """Return the source root and graph prefix for the file's Cargo crate."""
+    if not is_workspace:
+        conventional_source = root / "src"
+        if conventional_source in file_path.parents:
+            return conventional_source, ()
+        return root, ()
+
+    current = file_path.parent
+    crate_dir: Path | None = None
+    while current == root or root in current.parents:
+        if (current / "Cargo.toml").is_file():
+            crate_dir = current
+            break
+        if current == root:
+            break
+        current = current.parent
+    if crate_dir is None:
+        return root, ()
+
+    package = _cargo_data(crate_dir).get("package", {})
+    crate_name = str(package.get("name", crate_dir.name)).replace("-", "_")
+    source_root = crate_dir / "src"
+    if source_root not in file_path.parents:
+        source_root = crate_dir
+    return source_root, (_identifier(crate_name),)
+
+
+def _module_name(file_path: Path, source_root: Path, crate: tuple[str, ...]) -> tuple[str, ...]:
+    """Return the Rust module path represented by a source file."""
+    rel = file_path.relative_to(source_root)
+    parts = list(rel.parts)
+    stem = Path(parts[-1]).stem
+    directory = parts[:-1]
+    if stem in {"lib", "main"}:
+        return (*crate, *directory)
+    if stem == "mod":
+        return (*crate, *directory)
+    return tuple([*crate, *directory, stem])
+
+
+def _path_segments(node: Node | None) -> tuple[str, ...]:
+    """Extract ``a::b::Name`` segments from a path-like AST node."""
+    if node is None:
+        return ()
+    if node.type in {
+        "identifier",
+        "type_identifier",
+        "crate",
+        "self",
+        "super",
+        "metavariable",
+    }:
+        return (_identifier(_get_text(node)),)
+
+    path = node.child_by_field_name("path")
+    name = node.child_by_field_name("name")
+    if path is not None or name is not None:
+        return (*_path_segments(path), *_path_segments(name))
+
+    # use_wildcard has no named fields in tree-sitter-rust 0.24.
+    if node.type == "use_wildcard" and node.named_children:
+        return _path_segments(node.named_children[0])
+
+    # References through generic paths only need the base type name.
+    if node.type == "generic_type":
+        return _path_segments(node.child_by_field_name("type"))
+    return ()
+
+
+def _flatten_use(node: Node, prefix: tuple[str, ...] = ()) -> list[_Import]:
+    """Flatten a Rust use tree into concrete imports."""
+    if node.type == "use_declaration":
+        argument = node.child_by_field_name("argument")
+        return _flatten_use(argument, prefix) if argument is not None else []
+
+    if node.type == "scoped_use_list":
+        path = (*prefix, *_path_segments(node.child_by_field_name("path")))
+        use_list = node.child_by_field_name("list")
+        if use_list is None:
+            return []
+        imports: list[_Import] = []
+        for child in use_list.named_children:
+            if child.type == "self":
+                alias = path[-1] if path else "self"
+                imports.append(_Import(path=path, alias=alias))
+            else:
+                imports.extend(_flatten_use(child, path))
+        return imports
+
+    if node.type == "use_list":
+        imports = []
+        for child in node.named_children:
+            imports.extend(_flatten_use(child, prefix))
+        return imports
+
+    if node.type == "use_as_clause":
+        path = (*prefix, *_path_segments(node.child_by_field_name("path")))
+        alias_node = node.child_by_field_name("alias")
+        alias = _identifier(_get_text(alias_node)) if alias_node is not None else path[-1]
+        return [_Import(path=path, alias=alias)] if path else []
+
+    if node.type == "use_wildcard":
+        path = (*prefix, *_path_segments(node))
+        return [_Import(path=path, alias="*", wildcard=True)] if path else []
+
+    path = (*prefix, *_path_segments(node))
+    return [_Import(path=path, alias=path[-1])] if path else []
+
+
+def _extract_imports(container: Node) -> list[_Import]:
+    imports: list[_Import] = []
+    for child in container.named_children:
+        if child.type == "use_declaration":
+            imports.extend(_flatten_use(child))
+    return imports
+
+
+def _references(node: Node) -> _References:
+    simple: set[str] = set()
+    qualified: set[tuple[str, ...]] = set()
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type in {"scoped_identifier", "scoped_type_identifier"}:
+            path = _path_segments(current)
+            if len(path) > 1:
+                qualified.add(path)
+        elif current.type in {"identifier", "type_identifier"}:
+            simple.add(_identifier(_get_text(current)))
+        stack.extend(current.named_children)
+    return _References(simple=simple, qualified=qualified)
+
+
+def _base_type_path(node: Node | None) -> tuple[str, ...]:
+    """Get the implemented type path without generic arguments."""
+    if node is None:
+        return ()
+    # Wrapper nodes can contain lifetimes before the actual type. Follow the
+    # grammar's explicit type field so ``&'a mut T`` resolves to T, not ``a``.
+    wrapped_type = node.child_by_field_name("type")
+    if node.type in {"reference_type", "pointer_type", "array_type", "slice_type"}:
+        return _base_type_path(wrapped_type)
+    direct = _path_segments(node)
+    if direct:
+        return direct
+    for child in node.named_children:
+        path = _base_type_path(child)
+        if path:
+            return path
+    return ()
+
+
+def _generic_type_parameters(node: Node) -> frozenset[str]:
+    """Return type parameter names declared by an impl (excluding lifetimes)."""
+    parameters = node.child_by_field_name("type_parameters")
+    if parameters is None:
+        return frozenset()
+    return frozenset(
+        _identifier(_get_text(name))
+        for parameter in parameters.named_children
+        if parameter.type == "type_parameter"
+        for name in [parameter.child_by_field_name("name")]
+        if name is not None
+    )
+
+
+def _normalize_path(
+    path: tuple[str, ...],
+    current: tuple[str, ...],
+    crate: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    if not path:
+        return ()
+    parts = list(path)
+    if parts[0] == "crate":
+        return (*crate, *parts[1:])
+    if parts[0] == "self":
+        return (*current, *parts[1:])
+    if parts[0] == "super":
+        base = list(current)
+        while parts and parts[0] == "super":
+            if base:
+                base.pop()
+            parts.pop(0)
+        return (*base, *parts)
+    return (*current, *parts)
+
+
+def _deduplicate(edges: list[Edge]) -> list[Edge]:
+    seen: set[tuple[str, str, str]] = set()
+    unique: list[Edge] = []
+    for edge in edges:
+        key = (edge.source, edge.target, edge.relation)
+        if edge.source != edge.target and key not in seen:
+            seen.add(key)
+            unique.append(edge)
+    return unique
+
+
+@register_parser
+class RustParser(LanguageParser):
+    """Rust source code parser using tree-sitter."""
+
+    @property
+    def language(self) -> str:
+        return "rust"
+
+    @property
+    def file_extensions(self) -> list[str]:
+        return [".rs"]
+
+    def parse(self, files: list[Path], root: Path) -> DependencyGraph:
+        parser = Parser(RUST_LANGUAGE)
+        root = root.resolve()
+
+        entities: dict[str, Entity] = {}
+        packages: dict[str, list[str]] = {}
+        entity_refs: dict[str, _References] = {}
+        entity_imports: dict[str, list[_Import]] = {}
+        entity_crates: dict[str, tuple[str, ...]] = {}
+        pending_impls: list[_PendingImpl] = []
+        pending_trait_bounds: list[
+            tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...], list[_Import]]
+        ] = []
+        is_workspace = "workspace" in _cargo_data(root)
+
+        def add_entity(
+            *,
+            name: str,
+            kind: str,
+            module: tuple[str, ...],
+            rel_path: str,
+            imports: list[_Import],
+            node: Node | None,
+            crate: tuple[str, ...],
+            owner: str | None = None,
+            fqn_override: str | None = None,
+            references: _References | None = None,
+        ) -> str:
+            package = ".".join(module)
+            fqn = fqn_override or (f"{package}.{name}" if package else name)
+            entities[fqn] = Entity(
+                fqn=fqn,
+                name=name,
+                package=package,
+                file_path=rel_path,
+                kind=kind,
+                language="rust",
+                imports=[item.display for item in imports],
+                properties={"owner": owner} if owner else {},
+            )
+            package_entities = packages.setdefault(package, [])
+            if fqn not in package_entities:
+                package_entities.append(fqn)
+            if references is not None:
+                entity_refs[fqn] = references
+            elif node is not None:
+                entity_refs[fqn] = _references(node)
+            else:
+                entity_refs[fqn] = _References(set(), set())
+            entity_imports[fqn] = imports
+            entity_crates[fqn] = crate
+            return fqn
+
+        def visit_container(
+            container: Node,
+            module: tuple[str, ...],
+            rel_path: str,
+            file_stem: str,
+            crate: tuple[str, ...],
+            is_file_root: bool = False,
+        ) -> None:
+            imports = _extract_imports(container)
+            direct_entities = 0
+
+            for node in container.named_children:
+                if node.type in _TYPE_ITEMS:
+                    name_node = node.child_by_field_name("name")
+                    if name_node is None:
+                        continue
+                    name = _identifier(_get_text(name_node))
+                    owner = add_entity(
+                        name=name,
+                        kind=_TYPE_ITEMS[node.type],
+                        module=module,
+                        rel_path=rel_path,
+                        imports=imports,
+                        node=node,
+                        crate=crate,
+                    )
+                    direct_entities += 1
+                    if node.type == "trait_item":
+                        bounds = node.child_by_field_name("bounds")
+                        if bounds is not None:
+                            for bound in bounds.named_children:
+                                bound_path = _base_type_path(bound)
+                                if bound_path:
+                                    pending_trait_bounds.append(
+                                        (owner, bound_path, module, crate, imports)
+                                    )
+                        body = node.child_by_field_name("body")
+                        if body is not None:
+                            for member in body.named_children:
+                                if member.type not in {"function_item", "function_signature_item"}:
+                                    continue
+                                method_name = member.child_by_field_name("name")
+                                if method_name is None:
+                                    continue
+                                add_entity(
+                                    name=_identifier(_get_text(method_name)),
+                                    kind="method",
+                                    module=module,
+                                    rel_path=rel_path,
+                                    imports=imports,
+                                    node=member,
+                                    crate=crate,
+                                    owner=owner,
+                                    fqn_override=f"{owner}.{_identifier(_get_text(method_name))}",
+                                )
+                elif node.type == "function_item":
+                    name_node = node.child_by_field_name("name")
+                    if name_node is not None:
+                        add_entity(
+                            name=_identifier(_get_text(name_node)),
+                            kind="function",
+                            module=module,
+                            rel_path=rel_path,
+                            imports=imports,
+                            node=node,
+                            crate=crate,
+                        )
+                        direct_entities += 1
+                elif node.type == "impl_item":
+                    type_node = node.child_by_field_name("type")
+                    trait_node = node.child_by_field_name("trait")
+                    body = node.child_by_field_name("body")
+                    owner_path = _base_type_path(type_node)
+                    if not owner_path or body is None:
+                        continue
+                    methods: list[_PendingMethod] = []
+                    for member in body.named_children:
+                        if member.type != "function_item":
+                            continue
+                        method_name = member.child_by_field_name("name")
+                        if method_name is None:
+                            continue
+                        name = _identifier(_get_text(method_name))
+                        methods.append(_PendingMethod(name=name, references=_references(member)))
+                    pending_impls.append(
+                        _PendingImpl(
+                            owner_path=owner_path,
+                            trait_path=_base_type_path(trait_node),
+                            generic_parameters=_generic_type_parameters(node),
+                            module=module,
+                            crate=crate,
+                            imports=imports,
+                            rel_path=rel_path,
+                            methods=methods,
+                        )
+                    )
+                elif node.type == "mod_item":
+                    name_node = node.child_by_field_name("name")
+                    body = node.child_by_field_name("body")
+                    if name_node is not None and body is not None:
+                        child_module = (*module, _identifier(_get_text(name_node)))
+                        visit_container(body, child_module, rel_path, file_stem, crate)
+
+            if is_file_root and direct_entities == 0:
+                module_name = ".".join(module)
+                name = module[-1] if module else file_stem
+                fqn = module_name or file_stem
+                add_entity(
+                    name=name,
+                    kind="module",
+                    module=module[:-1] if module else (),
+                    rel_path=rel_path,
+                    imports=imports,
+                    node=container,
+                    crate=crate,
+                    fqn_override=fqn,
+                )
+
+        for source_file in files:
+            source_file = source_file.resolve()
+            try:
+                source_file.relative_to(root)
+                if source_file.stat().st_size > _MAX_FILE_BYTES:
+                    continue
+                tree = parser.parse(source_file.read_bytes())
+            except (OSError, ValueError):
+                continue
+
+            rel_path = str(source_file.relative_to(root))
+            source_root, crate = _crate_context(source_file, root, is_workspace)
+            visit_container(
+                tree.root_node,
+                _module_name(source_file, source_root, crate),
+                rel_path,
+                source_file.stem,
+                crate,
+                is_file_root=True,
+            )
+
+        non_member_entities = [e for e in entities.values() if e.kind != "method"]
+        by_module_name = {(e.package, e.name): e.fqn for e in non_member_entities}
+        by_simple_name: dict[str, list[str]] = {}
+        for entity in non_member_entities:
+            by_simple_name.setdefault(entity.name, []).append(entity.fqn)
+
+        def resolve(
+            path: tuple[str, ...],
+            current_package: str,
+            crate: tuple[str, ...] = (),
+        ) -> str | None:
+            current = tuple(part for part in current_package.split(".") if part)
+            candidates: list[tuple[str, ...]] = []
+            if path and path[0] in {"crate", "self", "super"}:
+                candidates.append(_normalize_path(path, current, crate))
+            else:
+                candidates.extend([(*current, *path), path])
+            for candidate in candidates:
+                fqn = ".".join(candidate)
+                if fqn in entities:
+                    return fqn
+            # A qualified path that did not match is external or unresolved;
+            # falling back by its final name could link ``std::io::Error`` to
+            # an unrelated local ``Error``. Keep the unique-name fallback only
+            # for simple paths (notably owners imported through a glob).
+            if len(path) == 1:
+                matches = by_simple_name.get(path[-1], [])
+                if len(matches) == 1:
+                    return matches[0]
+            return None
+
+        def expand_alias(path: tuple[str, ...], imports: list[_Import]) -> tuple[str, ...]:
+            if not path:
+                return path
+            for item in imports:
+                if not item.wildcard and path[0] == item.alias:
+                    return (*item.path, *path[1:])
+            return path
+
+        # Resolve impl owners only after all type declarations are known. This
+        # correctly attaches impls written in sibling modules and avoids graph
+        # entities for external/blanket owners such as std::io::Error, Box<T>,
+        # or &'a mut T.
+        edges: list[Edge] = []
+        owner_kinds = {"struct", "enum", "union", "type"}
+
+        for (
+            bound_owner,
+            bound_path,
+            bound_module,
+            bound_crate,
+            bound_imports,
+        ) in pending_trait_bounds:
+            package = ".".join(bound_module)
+            bound_target = resolve(expand_alias(bound_path, bound_imports), package, bound_crate)
+            if bound_target and entities[bound_target].kind == "trait":
+                bound_name = "::".join(bound_path)
+                if bound_name not in entities[bound_owner].interfaces:
+                    entities[bound_owner].interfaces.append(bound_name)
+                edges.append(Edge(bound_owner, bound_target, "extends"))
+
+        for pending in pending_impls:
+            package = ".".join(pending.module)
+            owner_path = expand_alias(pending.owner_path, pending.imports)
+            if len(owner_path) == 1 and owner_path[0] in pending.generic_parameters:
+                continue
+            resolved_owner = resolve(owner_path, package, pending.crate)
+            if resolved_owner is None or entities[resolved_owner].kind not in owner_kinds:
+                continue
+
+            owner_module = tuple(
+                part for part in entities[resolved_owner].package.split(".") if part
+            )
+            for method in pending.methods:
+                add_entity(
+                    name=method.name,
+                    kind="method",
+                    module=owner_module,
+                    rel_path=pending.rel_path,
+                    imports=pending.imports,
+                    node=None,
+                    crate=pending.crate,
+                    owner=resolved_owner,
+                    fqn_override=f"{resolved_owner}.{method.name}",
+                    references=method.references,
+                )
+
+            if pending.trait_path:
+                trait_path = expand_alias(pending.trait_path, pending.imports)
+                trait_target = resolve(trait_path, package, pending.crate)
+                if trait_target and entities[trait_target].kind == "trait":
+                    trait_name = "::".join(pending.trait_path)
+                    if trait_name not in entities[resolved_owner].interfaces:
+                        entities[resolved_owner].interfaces.append(trait_name)
+                    edges.append(Edge(resolved_owner, trait_target, "implements"))
+
+        for fqn, entity in entities.items():
+            refs = entity_refs.get(fqn, _References(set(), set()))
+            imports = entity_imports.get(fqn, [])
+            crate = entity_crates.get(fqn, ())
+
+            for item in imports:
+                if item.wildcard:
+                    module_path = _normalize_path(
+                        item.path,
+                        tuple(part for part in entity.package.split(".") if part),
+                        crate,
+                    )
+                    wildcard_module = ".".join(module_path)
+                    for ref in refs.simple:
+                        wildcard_target = by_module_name.get((wildcard_module, ref))
+                        if wildcard_target:
+                            edges.append(Edge(fqn, wildcard_target, "import"))
+                    continue
+                if item.alias not in refs.simple and entity.kind != "module":
+                    continue
+                import_target = resolve(item.path, entity.package, crate)
+                if import_target:
+                    edges.append(Edge(fqn, import_target, "import"))
+
+            for ref in refs.simple:
+                same_module_target = by_module_name.get((entity.package, ref))
+                if same_module_target:
+                    edges.append(Edge(fqn, same_module_target, "uses"))
+
+            for qualified_path in refs.qualified:
+                qualified_target = resolve(
+                    expand_alias(qualified_path, imports), entity.package, crate
+                )
+                if qualified_target:
+                    edges.append(Edge(fqn, qualified_target, "uses"))
+
+        return DependencyGraph(
+            entities=entities,
+            edges=_deduplicate(edges),
+            packages=packages,
+        )

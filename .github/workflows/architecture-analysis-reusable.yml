@@ -24,7 +24,7 @@ on:
         type: string
         default: "."
       language:
-        description: Optional language override (java, python, typescript, c, go, kotlin).
+        description: Optional language override (java, python, typescript, c, go, kotlin, rust).
         required: false
         type: string
         default: ""

@@ -146,7 +146,7 @@ def _build_server():  # type: ignore[no-untyped-def]
 
         Args:
             source: Git repo URL or local directory path.
-            language: Override language detection (java, python, c, typescript, go, kotlin).
+            language: Override language detection (java, python, c, typescript, go, kotlin, rust).
             work_dir: Directory to clone into. Uses temp dir if None.
             exclude_tests: Exclude test/vendor/build directories (default True).
             source_root: Override source root (e.g. 'src/main/java').
@@ -181,7 +181,7 @@ def _build_server():  # type: ignore[no-untyped-def]
 
         Args:
             source_path: Root directory of the project.
-            language: Language to parse (java, python, c, typescript, go, kotlin).
+            language: Language to parse (java, python, c, typescript, go, kotlin, rust).
                 Auto-detected if None.
             files: Specific files to parse. Discovers all if None.
             use_cache: Return cached results when source files haven't changed.

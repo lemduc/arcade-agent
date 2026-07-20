@@ -43,7 +43,9 @@ Handle real-world polyglot monorepos.
 - [x] **15. TypeScript/JS parser** — Shipped in #8 (`parsers/typescript.py`).
 - [x] **16a. Go parser** — Shipped alongside TS/JS in #8 (`parsers/go.py`).
 - [x] **16a2. Kotlin parser** — Shipped (`parsers/kotlin.py`) for JVM/Kotlin-first repos (e.g. embabel-agent).
-- [ ] **16b. Rust parser** — Still open. High-demand language for agent-assisted development.
+- [x] **16b. Rust parser** — Tree-sitter parser for Rust modules, types, traits, functions,
+  methods, imports, qualified references, trait relationships, and Cargo workspaces
+  (`parsers/rust.py`).
 - [x] **17. Incremental parsing** — Content-hash extract cache shipped in #9 (`incremental.py`), wired for the Python parser only; extending to the other two-pass parsers is follow-up.
 - [ ] **18. Cross-language dependency tracking** — Java↔Python via gRPC, TS frontend↔Java backend, etc.
 

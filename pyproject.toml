@@ -45,6 +45,7 @@ languages = [
     "tree-sitter-c>=0.23.0",
     "tree-sitter-cpp>=0.23.0",
     "tree-sitter-kotlin>=1.1.0",
+    "tree-sitter-rust>=0.23.0",
 ]
 mcp = [
     "mcp[cli]>=1.0",

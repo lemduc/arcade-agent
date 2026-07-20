@@ -60,6 +60,15 @@ def test_cache_key_changes_with_file_modification(tmp_project):
     assert k1 != k2
 
 
+def test_cache_key_tracks_rust_source_files(tmp_project):
+    rust_file = tmp_project / "src" / "lib.rs"
+    rust_file.write_text("pub struct Before;")
+    k1 = cache_key(str(tmp_project), "rust", None)
+    rust_file.write_text("pub struct After;")
+    k2 = cache_key(str(tmp_project), "rust", None)
+    assert k1 != k2
+
+
 def test_cache_miss_returns_none(tmp_project):
     result = get_cached_graph(str(tmp_project), "nonexistent_key")
     assert result is None

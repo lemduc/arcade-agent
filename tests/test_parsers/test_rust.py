@@ -1,0 +1,238 @@
+"""Tests for the Rust parser."""
+
+import pytest
+
+pytest.importorskip("tree_sitter_rust")
+from arcade_agent.parsers.rust import RustParser  # noqa: E402
+from arcade_agent.tools.ingest import ingest  # noqa: E402
+from arcade_agent.tools.parse import parse  # noqa: E402
+
+
+def _project(tmp_path):
+    (tmp_path / "models.rs").write_text(
+        "pub struct User { pub id: u64 }\n"
+        "pub enum Role { Admin, Member }\n"
+        "pub struct Error;\n"
+        "pub struct T;\n"
+        "pub type UserId = u64;\n"
+    )
+    (tmp_path / "repository.rs").write_text(
+        "use crate::models::User;\n"
+        "pub trait Resource {}\n"
+        "pub trait Repository: Resource {\n"
+        "    fn find(&self, id: u64) -> Option<User>;\n"
+        "}\n"
+        "pub struct Store;\n"
+        "impl Repository for Store {\n"
+        "    fn find(&self, id: u64) -> Option<User> { None }\n"
+        "}\n"
+    )
+    (tmp_path / "service").mkdir()
+    (tmp_path / "service" / "mod.rs").write_text(
+        "use crate::models::{Role, User};\n"
+        "use crate::repository::Repository as Repo;\n"
+        "pub struct UserService<R: Repo> { repo: R }\n"
+        "pub struct MemoryRepository;\n"
+        "impl Repo for MemoryRepository {\n"
+        "    fn find(&self, id: u64) -> Option<User> { None }\n"
+        "}\n"
+        "impl<R: Repo> UserService<R> {\n"
+        "    pub fn get(&self, id: u64) -> Option<User> { self.repo.find(id) }\n"
+        "    pub fn role(&self) -> Role { Role::Member }\n"
+        "}\n"
+    )
+    (tmp_path / "lib.rs").write_text(
+        "pub mod models;\n"
+        "pub mod repository;\n"
+        "pub mod service;\n"
+        "pub mod impls;\n"
+        "pub use service::UserService;\n"
+    )
+    (tmp_path / "impls.rs").write_text(
+        "use crate::models::User as Account;\n"
+        "pub trait DisplayAccount { fn display(&self); }\n"
+        "impl DisplayAccount for Account { fn display(&self) {} }\n"
+        "pub trait ExternalOwnerHook { fn hook(&self); }\n"
+        "impl ExternalOwnerHook for std::io::Error { fn hook(&self) {} }\n"
+        "pub trait Forward { fn forward(&self); }\n"
+        "impl<'a, T> Forward for &'a mut T { fn forward(&self) {} }\n"
+        "#[cfg(unix)] impl Account { fn platform(&self) {} }\n"
+        "#[cfg(windows)] impl Account { fn platform(&self) {} }\n"
+    )
+    return sorted(tmp_path.rglob("*.rs"))
+
+
+def test_rust_parser_properties():
+    parser = RustParser()
+    assert parser.language == "rust"
+    assert parser.file_extensions == [".rs"]
+
+
+def test_rust_parser_extracts_types_functions_and_methods(tmp_path):
+    graph = RustParser().parse(_project(tmp_path), tmp_path)
+
+    assert graph.entities["models.User"].kind == "struct"
+    assert graph.entities["models.Role"].kind == "enum"
+    assert graph.entities["models.UserId"].kind == "type"
+    assert graph.entities["repository.Repository"].kind == "trait"
+    assert graph.entities["repository.Repository.find"].kind == "method"
+    assert graph.entities["repository.Store.find"].properties["owner"] == "repository.Store"
+    assert graph.entities["service.UserService.get"].kind == "method"
+    assert graph.entities["service.UserService.get"].language == "rust"
+
+
+def test_rust_parser_uses_rust_file_module_conventions(tmp_path):
+    graph = RustParser().parse(_project(tmp_path), tmp_path)
+
+    assert "models" in graph.packages
+    assert "repository" in graph.packages
+    assert "service" in graph.packages
+    assert graph.entities["service.UserService"].file_path == "service/mod.rs"
+    assert "lib" in graph.entities  # module-only crate root remains visible
+
+
+def test_rust_parser_resolves_imports_references_and_trait_impls(tmp_path):
+    graph = RustParser().parse(_project(tmp_path), tmp_path)
+    edges = {(edge.source, edge.target, edge.relation) for edge in graph.edges}
+
+    assert ("service.UserService.get", "models.User", "import") in edges
+    assert ("service.UserService.role", "models.Role", "import") in edges
+    assert ("repository.Store", "repository.Repository", "implements") in edges
+    assert ("service.MemoryRepository", "repository.Repository", "implements") in edges
+    assert ("repository.Repository", "repository.Resource", "extends") in edges
+    assert ("repository.Repository.find", "models.User", "import") in edges
+
+
+def test_rust_parser_handles_inline_modules_and_empty_input(tmp_path):
+    source = tmp_path / "lib.rs"
+    source.write_text(
+        "mod internal {\n"
+        "    pub struct Config;\n"
+        "    impl Config { pub fn load() -> Self { Self } }\n"
+        "}\n"
+    )
+
+    graph = RustParser().parse([source], tmp_path)
+    assert "internal.Config" in graph.entities
+    assert "internal.Config.load" in graph.entities
+
+    empty = RustParser().parse([], tmp_path)
+    assert empty.num_entities == 0
+    assert empty.num_edges == 0
+
+
+def test_rust_parser_handles_ripgrep_impl_owner_regressions(tmp_path):
+    # Reduced from ripgrep 227381d: sibling impls from globset/serde_impl.rs,
+    # external owners from matcher/src/lib.rs, and reference blanket impls from
+    # ignore/src/walk.rs and searcher/src/sink.rs.
+    graph = RustParser().parse(_project(tmp_path), tmp_path)
+    edges = {(edge.source, edge.target, edge.relation) for edge in graph.edges}
+
+    display = graph.entities["models.User.display"]
+    assert display.properties["owner"] == "models.User"
+    assert display.file_path == "impls.rs"
+    assert ("models.User", "impls.DisplayAccount", "implements") in edges
+
+    # External and generic blanket impls must not manufacture local owners.
+    assert "std.io.Error.hook" not in graph.entities
+    assert "models.Error.hook" not in graph.entities
+    assert "impls.a.forward" not in graph.entities
+    assert "impls.T.forward" not in graph.entities
+    assert "models.T.forward" not in graph.entities
+    assert all(
+        entity.properties["owner"] in graph.entities
+        for entity in graph.entities.values()
+        if entity.kind == "method"
+    )
+
+    # Mutually exclusive cfg impls collapse to one graph method without
+    # duplicating package membership.
+    assert "models.User.platform" in graph.entities
+    assert all(len(fqns) == len(set(fqns)) for fqns in graph.packages.values())
+
+
+def test_rust_parser_handles_union_raw_identifiers_and_function_modifiers(tmp_path):
+    source = tmp_path / "advanced.rs"
+    source.write_text(
+        "pub union Payload { integer: u64, float: f64 }\n"
+        "pub struct r#type;\n"
+        "pub async fn fetch() {}\n"
+        "pub unsafe fn unchecked() {}\n"
+        'pub extern "C" fn exported() {}\n'
+    )
+
+    graph = RustParser().parse([source], tmp_path)
+    assert graph.entities["advanced.Payload"].kind == "union"
+    assert graph.entities["advanced.type"].kind == "struct"
+    assert graph.entities["advanced.fetch"].kind == "function"
+    assert graph.entities["advanced.unchecked"].kind == "function"
+    assert graph.entities["advanced.exported"].kind == "function"
+
+
+def test_rust_parser_resolves_super_glob_imports_in_inline_modules(tmp_path):
+    source = tmp_path / "lib.rs"
+    source.write_text(
+        "mod models { pub struct Config; }\n"
+        "mod service {\n"
+        "    use super::models::*;\n"
+        "    pub fn load(_: Config) {}\n"
+        "}\n"
+    )
+
+    graph = RustParser().parse([source], tmp_path)
+    edges = {(edge.source, edge.target, edge.relation) for edge in graph.edges}
+    assert ("service.load", "models.Config", "import") in edges
+
+
+def test_rust_is_auto_detected_by_ingest_and_parse(tmp_path):
+    files = _project(tmp_path)
+
+    repo = ingest(str(tmp_path))
+    assert repo.language == "rust"
+    assert repo.source_files == files
+
+    graph = parse(str(tmp_path), use_cache=False)
+    assert "models.User" in graph.entities
+
+
+def test_rust_cargo_workspace_keeps_member_crates_and_crate_paths(tmp_path):
+    (tmp_path / "Cargo.toml").write_text('[workspace]\nmembers = ["app", "worker"]\n')
+    for crate in ("app", "worker"):
+        source = tmp_path / crate / "src"
+        source.mkdir(parents=True)
+        (tmp_path / crate / "Cargo.toml").write_text(
+            f'[package]\nname = "{crate}"\nversion = "0.1.0"\n'
+        )
+    (tmp_path / "worker" / "src" / "lib.rs").write_text("pub struct Worker;\n")
+    (tmp_path / "app" / "src" / "lib.rs").write_text(
+        "use worker::Worker;\npub struct App { worker: Worker }\n"
+    )
+
+    repo = ingest(str(tmp_path), language="rust")
+    assert repo.path == tmp_path
+    assert len(repo.source_files) == 2
+
+    graph = parse(
+        str(repo.path),
+        language="rust",
+        files=[str(path) for path in repo.source_files],
+        use_cache=False,
+    )
+    assert "app.App" in graph.entities
+    assert "worker.Worker" in graph.entities
+    assert ("app.App", "worker.Worker", "import") in {
+        (edge.source, edge.target, edge.relation) for edge in graph.edges
+    }
+
+
+def test_rust_direct_parse_uses_single_crate_src_as_module_root(tmp_path):
+    (tmp_path / "Cargo.toml").write_text('[package]\nname = "single-crate"\nversion = "0.1.0"\n')
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "lib.rs").write_text("pub struct RootType;\n")
+    (source / "service.rs").write_text("pub struct Service;\n")
+
+    graph = parse(str(tmp_path), language="rust", use_cache=False)
+    assert "RootType" in graph.entities
+    assert "service.Service" in graph.entities
+    assert "src.RootType" not in graph.entities
