@@ -617,12 +617,13 @@ def build_snapshot_mermaid(snapshot: dict | None) -> str:
     dependencies = snapshot.get("component_dependencies", [])
 
     for component in components:
+        comparison_name = component.get("comparison_name", component["name"])
         label = (
-            f"{component['name']}\\n"
+            f"{comparison_name}\\n"
             f"{component.get('num_entities', len(component.get('entities', [])))} entities\\n"
             f"{component.get('class_count', 0)} classes / {component.get('method_count', 0)} methods"
         )
-        lines.append(f"    {node_id(component['name'])}[\"{label}\"]")
+        lines.append(f"    {node_id(comparison_name)}[\"{label}\"]")
 
     for dep in dependencies:
         lines.append(
