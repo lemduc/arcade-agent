@@ -7,12 +7,22 @@ import threading
 from pathlib import Path
 from unittest.mock import Mock
 
-from arcade_agent.tools.analyze import analyze
+import pytest
+
+from arcade_agent.tools.analyze import PartialAnalysisError, analyze
+from arcade_agent.tools.registry import get_tool
 
 
-def test_analyze_orders_dependencies_and_parallelizes_terminal_stages(monkeypatch, tmp_path):
+def test_analyze_is_registered_as_async_tool():
+    import arcade_agent.tools.parse  # noqa: F401 — register sync tool
+
+    tool = get_tool("analyze")
+    assert tool.is_async is True
+    assert get_tool("parse").is_async is False
+
+
+def test_analyze_runs_stages_sequentially(monkeypatch, tmp_path):
     events: list[str] = []
-    terminal_barrier = threading.Barrier(2, timeout=1)
     repository = Mock(path=tmp_path, language="python", source_files=[Path("example.py")])
     graph = Mock()
     architecture = Mock()
@@ -32,12 +42,12 @@ def test_analyze_orders_dependencies_and_parallelizes_terminal_stages(monkeypatc
         return architecture
 
     def fake_smells(**kwargs):
-        terminal_barrier.wait()
+        assert events == ["ingest", "parse", "recover"]
         events.append("smells")
         return [Mock()]
 
     def fake_metrics(**kwargs):
-        terminal_barrier.wait()
+        assert events == ["ingest", "parse", "recover", "smells"]
         events.append("metrics")
         return [Mock(), Mock()]
 
@@ -49,13 +59,52 @@ def test_analyze_orders_dependencies_and_parallelizes_terminal_stages(monkeypatc
 
     result = asyncio.run(analyze(str(tmp_path), language="python", use_cache=False))
 
-    assert events[:3] == ["ingest", "parse", "recover"]
-    assert set(events[3:]) == {"smells", "metrics"}
+    assert events == ["ingest", "parse", "recover", "smells", "metrics"]
     assert result.repository is repository
     assert result.graph is graph
     assert result.architecture is architecture
     assert len(result.smells) == 1
     assert len(result.metrics) == 2
+
+
+def test_analyze_forwards_recover_and_ingest_tuning_params(monkeypatch, tmp_path):
+    captured: dict[str, object] = {}
+    repository = Mock(path=tmp_path, language="python", source_files=[])
+
+    def fake_ingest(**kwargs):
+        captured["ingest"] = kwargs
+        return repository
+
+    def fake_recover(**kwargs):
+        captured["recover"] = kwargs
+        return Mock()
+
+    monkeypatch.setattr("arcade_agent.tools.analyze.ingest", fake_ingest)
+    monkeypatch.setattr("arcade_agent.tools.parse.parse", lambda **kwargs: Mock())
+    monkeypatch.setattr("arcade_agent.tools.recover.recover", fake_recover)
+    monkeypatch.setattr("arcade_agent.tools.detect_smells.detect_smells", lambda **kwargs: [])
+    monkeypatch.setattr("arcade_agent.tools.compute_metrics.compute_metrics", lambda **kwargs: [])
+
+    asyncio.run(
+        analyze(
+            str(tmp_path),
+            language="python",
+            work_dir="/tmp/work",
+            algorithm="wca",
+            num_clusters=4,
+            similarity_measure="js",
+            pkg_depth=2,
+            hybrid_weight=0.25,
+            use_cache=False,
+        )
+    )
+
+    assert captured["ingest"]["work_dir"] == "/tmp/work"
+    assert captured["recover"]["algorithm"] == "wca"
+    assert captured["recover"]["num_clusters"] == 4
+    assert captured["recover"]["similarity_measure"] == "js"
+    assert captured["recover"]["pkg_depth"] == 2
+    assert captured["recover"]["hybrid_weight"] == 0.25
 
 
 def test_analyze_yields_control_while_blocking_work_runs(monkeypatch, tmp_path):
@@ -84,3 +133,41 @@ def test_analyze_yields_control_while_blocking_work_runs(monkeypatch, tmp_path):
     monkeypatch.setattr("arcade_agent.tools.compute_metrics.compute_metrics", lambda **kwargs: [])
 
     asyncio.run(exercise())
+
+
+def test_analyze_raises_partial_error_with_completed_artifacts(monkeypatch, tmp_path):
+    repository = Mock(path=tmp_path, language="python", source_files=[])
+    graph = Mock()
+    architecture = Mock()
+    stages: list[str] = []
+
+    monkeypatch.setattr(
+        "arcade_agent.tools.analyze.ingest",
+        lambda **kwargs: repository,
+    )
+    monkeypatch.setattr("arcade_agent.tools.parse.parse", lambda **kwargs: graph)
+    monkeypatch.setattr("arcade_agent.tools.recover.recover", lambda **kwargs: architecture)
+    monkeypatch.setattr(
+        "arcade_agent.tools.detect_smells.detect_smells",
+        Mock(side_effect=RuntimeError("smell boom")),
+    )
+    monkeypatch.setattr(
+        "arcade_agent.tools.compute_metrics.compute_metrics",
+        Mock(side_effect=AssertionError("metrics should not run")),
+    )
+
+    with pytest.raises(PartialAnalysisError) as exc_info:
+        asyncio.run(
+            analyze(
+                str(tmp_path),
+                language="python",
+                on_stage=lambda name, _value: stages.append(name),
+            )
+        )
+
+    err = exc_info.value
+    assert err.stage == "terminal"
+    assert err.repository is repository
+    assert err.graph is graph
+    assert err.architecture is architecture
+    assert stages == ["repository", "graph", "architecture"]

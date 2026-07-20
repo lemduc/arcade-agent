@@ -1,5 +1,7 @@
 """Tests for parse result caching."""
 
+import os
+
 import pytest
 
 from arcade_agent.cache import (
@@ -49,8 +51,11 @@ def test_cache_key_changes_with_language(tmp_project):
 
 def test_cache_key_changes_with_file_modification(tmp_project):
     k1 = cache_key(str(tmp_project), "java", None)
-    # Modify a file
-    (tmp_project / "src" / "Main.java").write_text("public class Main { int x; }")
+    # Modify a file and bump mtime past filesystem second resolution
+    target = tmp_project / "src" / "Main.java"
+    target.write_text("public class Main { int x; }")
+    newer = target.stat().st_mtime + 2
+    os.utime(target, (newer, newer))
     k2 = cache_key(str(tmp_project), "java", None)
     assert k1 != k2
 
@@ -69,6 +74,9 @@ def test_cache_roundtrip(tmp_project, small_graph):
     assert loaded.num_edges == 1
     assert loaded.entities["Main"].name == "Main"
     assert loaded.edges[0].source == "Main"
+    # Atomic write should leave no torn tmp siblings
+    cache_dir = tmp_project / ".arcade-cache"
+    assert list(cache_dir.glob("*.tmp")) == []
 
 
 def test_invalidate_cache(tmp_project, small_graph):
