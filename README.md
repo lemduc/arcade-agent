@@ -44,8 +44,9 @@ metrics = compute_metrics(arch, graph)
 visualize(repo.name, repo.version, graph, arch, smells, output="report.html")
 ```
 
-For async applications, the one-call pipeline keeps the event loop responsive
-while the blocking analysis stages run in worker threads:
+For async applications, the one-call `analyze` tool keeps the event loop
+responsive by running the sequential analysis stages in a worker thread
+(other sync MCP tools still run inline on the event loop):
 
 ```python
 from arcade_agent.tools.analyze import analyze
@@ -58,7 +59,7 @@ print(len(result.architecture.components), len(result.smells))
 
 | Tool | Description |
 |------|-------------|
-| `analyze` | Run ingest → parse → recover asynchronously, then smells + metrics concurrently |
+| `analyze` | One-call ingest → parse → recover → smells → metrics (async; offloads blocking work) |
 | `ingest` | Clone/load source code, detect versions, discover files |
 | `parse` | Parse source → DependencyGraph via tree-sitter |
 | `recover` | Recover architecture (PKG, WCA, ACDC, ARC, LIMBO) |
@@ -167,7 +168,7 @@ Add to your Claude Code MCP settings:
 
 ### How it works
 
-1. **Async pipeline** — `analyze` runs the complete pipeline without blocking the MCP event loop and returns reusable session IDs for every artifact.
+1. **Async pipeline** — `analyze` runs the complete sequential pipeline in a worker thread so the MCP event loop stays responsive, and returns reusable session IDs for every artifact.
 2. **Session store** — Tools like `parse` and `recover` return compact summaries with a `session_id`. Pass session IDs to downstream tools instead of full data objects.
 3. **Token budget** — Every tool accepts an optional `max_tokens` parameter. Outputs are progressively truncated (entity details → edge summaries → component counts) to fit.
 4. **Parse caching** — Parsed dependency graphs are cached to `.arcade-cache/` keyed by file modification times. Repeated analysis of the same codebase skips re-parsing.
