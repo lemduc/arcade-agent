@@ -85,7 +85,9 @@ def _extract_delegation_types(node: Node) -> tuple[str | None, list[str]]:
     Kotlin AST hint: a parent written as a constructor invocation (`Base()`)
     is treated as a class; a bare user type (`Runnable`) is treated as an
     interface. This matches common Kotlin style and keeps edges aligned with
-    the Java parser's extends/implements relations.
+    the Java parser's extends/implements relations. A class parent written
+    without constructor parentheses is therefore conservatively classified as
+    an interface.
     """
     superclass: str | None = None
     interfaces: list[str] = []
@@ -115,13 +117,19 @@ def _first_user_type_name(node: Node) -> str | None:
     Kotlin parents are often qualified (`com.example.Base`). The grammar stores
     that as multiple `identifier` children under `user_type`, so we join them.
     """
-    if node.type == "user_type":
-        parts = [_get_text(child) for child in node.children if child.type == "identifier"]
-        return ".".join(parts) if parts else None
-    for child in node.children:
-        found = _first_user_type_name(child)
-        if found:
-            return found
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type == "user_type":
+            parts = [
+                _get_text(child)
+                for child in current.children
+                if child.type == "identifier"
+            ]
+            if parts:
+                return ".".join(parts)
+            continue
+        stack.extend(reversed(current.children))
     return None
 
 
@@ -139,7 +147,8 @@ def _parse_type_declaration(node: Node) -> dict | None:
     kind = _detect_kind(node)
     superclass, interfaces = _extract_delegation_types(node)
     if kind == "interface":
-        # Interfaces only have interface parents.
+        # Keep Java-compatible edge vocabulary: interface inheritance is
+        # represented by the graph's "implements" relation.
         if superclass:
             interfaces = [superclass, *interfaces]
             superclass = None
@@ -172,18 +181,25 @@ def _extract_type_declarations(root_node: Node) -> list[dict]:
 
 
 def _extract_annotation_classes_from_misc(node: Node) -> list[dict]:
-    """Recover annotation class names from non-class_declaration AST shapes."""
-    found: list[dict] = []
+    """Recover annotation classes from known tree-sitter error-recovery shapes.
 
-    def visit(n: Node) -> None:
-        if n.type == "class_declaration":
-            decl = _parse_type_declaration(n)
+    Traversal is intentionally iterative and limited to annotation/error
+    wrappers. Descending through arbitrary function bodies would hoist local
+    classes into package-level entities.
+    """
+    found: list[dict] = []
+    recovery_containers = {"annotated_expression", "infix_expression", "ERROR"}
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type == "class_declaration":
+            decl = _parse_type_declaration(current)
             if decl:
                 found.append(decl)
                 found.extend(_extract_nested_types(decl))
-            return
-        if n.type == "infix_expression":
-            idents = [c for c in n.children if c.type == "identifier"]
+            continue
+        if current.type == "infix_expression":
+            idents = [c for c in current.children if c.type == "identifier"]
             if (
                 len(idents) >= 3
                 and _get_text(idents[0]) == "annotation"
@@ -196,16 +212,14 @@ def _extract_annotation_classes_from_misc(node: Node) -> list[dict]:
                         "kind": "class",
                         "superclass": None,
                         "interfaces": [],
-                        "node": n,
+                        "node": current,
                         "is_data": False,
                         "is_sealed": False,
                     }
                 )
-                return
-        for child in n.children:
-            visit(child)
-
-    visit(node)
+                continue
+        if current.type in recovery_containers:
+            stack.extend(reversed(current.children))
     return found
 
 
@@ -223,12 +237,13 @@ def _extract_nested_types(owner: dict) -> list[dict]:
                     if sub.type == "identifier":
                         companion_name = _get_text(sub)
                         break
+                superclass, interfaces = _extract_delegation_types(member)
                 nested.append(
                     {
                         "name": f"{owner_name}.{companion_name}",
                         "kind": "object",
-                        "superclass": None,
-                        "interfaces": [],
+                        "superclass": superclass,
+                        "interfaces": interfaces,
                         "node": member,
                         "is_data": False,
                         "is_sealed": False,
@@ -309,10 +324,6 @@ def _resolve_name(
         if aliased in entities:
             return aliased
 
-    # Already-qualified names (e.g. com.example.util.MathHelper)
-    if "." in simple_name and simple_name in entities:
-        return simple_name
-
     for imp in source_entity.imports:
         if imp.endswith(f".{simple_name}") and imp in entities:
             return imp
@@ -321,9 +332,13 @@ def _resolve_name(
     if same_pkg_fqn in entities:
         return same_pkg_fqn
 
-    leaf = simple_name.split(".")[-1]
-    if leaf in fqn_index:
-        return fqn_index[leaf]
+    # A qualified name that did not resolve exactly must not bind to an
+    # unrelated same-leaf type in another package.
+    if "." in simple_name:
+        return None
+
+    if simple_name in fqn_index:
+        return fqn_index[simple_name]
 
     return None
 
@@ -375,7 +390,7 @@ class KotlinParser(LanguageParser):
                 if decl.get("is_sealed"):
                     props["sealed"] = True
                 if aliases:
-                    props["import_aliases"] = aliases
+                    props["import_aliases"] = dict(aliases)
 
                 entity = Entity(
                     fqn=fqn,
@@ -390,7 +405,7 @@ class KotlinParser(LanguageParser):
                     properties=props,
                 )
                 entities[fqn] = entity
-                entity_aliases[fqn] = aliases
+                entity_aliases[fqn] = dict(aliases)
                 packages.setdefault(package, []).append(fqn)
 
                 for method_decl in _extract_methods(decl, package):
@@ -417,9 +432,9 @@ class KotlinParser(LanguageParser):
                     kind="function",
                     language="kotlin",
                     imports=imports,
-                    properties={"import_aliases": aliases} if aliases else {},
+                    properties={"import_aliases": dict(aliases)} if aliases else {},
                 )
-                entity_aliases[fqn] = aliases
+                entity_aliases[fqn] = dict(aliases)
                 packages.setdefault(package, []).append(fqn)
 
         fqn_index: dict[str, str] = {}

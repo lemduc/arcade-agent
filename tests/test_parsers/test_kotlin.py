@@ -244,6 +244,113 @@ class Child : com.example.util.MathHelper(), com.example.util.RunnableLike
     ) in edge_tuples
 
 
+def test_kotlin_parser_does_not_resolve_qualified_parent_by_leaf_name(tmp_path: Path):
+    """A third-party qualified parent must not bind to an unrelated local leaf."""
+    src = tmp_path / "QualifiedCollision.kt"
+    src.write_text(
+        """
+package com.example.app
+
+open class MathHelper
+
+class Child : some.thirdparty.MathHelper()
+""".strip()
+        + "\n"
+    )
+    graph = KotlinParser().parse([src], tmp_path)
+    child = graph.entities["com.example.app.Child"]
+    assert child.superclass == "some.thirdparty.MathHelper"
+    assert not any(
+        edge.source == child.fqn and edge.relation == "extends"
+        for edge in graph.edges
+    )
+
+
+def test_kotlin_parser_does_not_hoist_function_local_class(tmp_path: Path):
+    src = tmp_path / "LocalClass.kt"
+    src.write_text(
+        """
+package com.example.app
+
+fun outer() {
+    class LocalThing
+}
+
+class RealTopLevel
+""".strip()
+        + "\n"
+    )
+    graph = KotlinParser().parse([src], tmp_path)
+    assert "com.example.app.RealTopLevel" in graph.entities
+    assert "com.example.app.outer" in graph.entities
+    assert "com.example.app.LocalThing" not in graph.entities
+
+
+def test_kotlin_parser_handles_deep_expression_without_recursion_error(tmp_path: Path):
+    """Machine-generated nesting in one file must not abort the full analysis."""
+    deep = tmp_path / "Deep.kt"
+    deep.write_text(
+        "package com.example.deep\n"
+        "val deeplyNested = "
+        + ("(" * 4_000)
+        + "1"
+        + (")" * 4_000)
+        + "\n"
+    )
+    valid = tmp_path / "Valid.kt"
+    valid.write_text("package com.example.valid\nclass Survives\n")
+
+    graph = KotlinParser().parse([deep, valid], tmp_path)
+    assert "com.example.valid.Survives" in graph.entities
+
+
+def test_kotlin_parser_extracts_companion_inheritance(tmp_path: Path):
+    src = tmp_path / "CompanionFactory.kt"
+    src.write_text(
+        """
+package com.example.factory
+
+interface Factory
+
+class Service {
+    companion object : Factory {
+        fun create(): Service = Service()
+    }
+}
+""".strip()
+        + "\n"
+    )
+    graph = KotlinParser().parse([src], tmp_path)
+    companion = graph.entities["com.example.factory.Service.Companion"]
+    assert companion.interfaces == ["Factory"]
+    assert (
+        companion.fqn,
+        "com.example.factory.Factory",
+        "implements",
+    ) in {(edge.source, edge.target, edge.relation) for edge in graph.edges}
+
+
+def test_kotlin_parser_copies_import_alias_properties_per_entity(tmp_path: Path):
+    src = tmp_path / "Aliases.kt"
+    src.write_text(
+        """
+package com.example.alias
+
+import com.example.alias.Base as B
+
+open class Base
+class First : B()
+class Second : B()
+""".strip()
+        + "\n"
+    )
+    graph = KotlinParser().parse([src], tmp_path)
+    first_aliases = graph.entities["com.example.alias.First"].properties["import_aliases"]
+    second_aliases = graph.entities["com.example.alias.Second"].properties["import_aliases"]
+    assert first_aliases == second_aliases == {"B": "com.example.alias.Base"}
+    assert first_aliases is not second_aliases
+
+
 def test_kotlin_parser_skips_unreadable_files(tmp_path: Path):
     missing = tmp_path / "Missing.kt"
     empty = tmp_path / "Empty.kt"
