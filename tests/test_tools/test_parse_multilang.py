@@ -59,3 +59,33 @@ def test_parse_rejects_language_and_languages_together(fixtures_dir: Path):
     root = fixtures_dir / "java_kotlin_mixed"
     with pytest.raises(ValueError, match="language and languages"):
         parse(str(root), language="java", languages=["kotlin"], use_cache=False)
+
+
+def test_detect_languages_from_files_uses_suffix_without_existing_file():
+    """Relative/missing paths still detect languages from suffixes."""
+    from arcade_agent.tools.parse import detect_languages_from_files
+
+    files = [
+        Path("does/not/exist/Foo.java"),
+        Path("relative/Bar.kt"),
+        Path("no_suffix"),
+        Path("src/main/kotlin"),
+    ]
+    assert detect_languages_from_files(files) == ["java", "kotlin"]
+
+
+def test_parse_multi_with_relative_file_list_detects_languages(fixtures_dir: Path):
+    """language='multi' + files=[...] must not require paths to exist on disk."""
+    from arcade_agent.tools.parse import _resolve_languages
+
+    root = fixtures_dir / "java_kotlin_mixed"
+    resolved = _resolve_languages(
+        root,
+        language="multi",
+        languages=None,
+        file_paths=[
+            Path("src/main/java/com/example/mixed/JavaBaseService.java"),
+            Path("src/main/kotlin/com/example/mixed/KotlinService.kt"),
+        ],
+    )
+    assert resolved == ["java", "kotlin"]

@@ -42,3 +42,15 @@ def test_ingest_rejects_language_and_languages_together(fixtures_dir: Path):
     root = fixtures_dir / "maven_java_kotlin"
     with pytest.raises(ValueError, match="language and languages"):
         ingest(str(root), language="java", languages=["kotlin"])
+
+
+def test_ingest_rejects_unknown_languages(fixtures_dir: Path):
+    root = fixtures_dir / "maven_java_kotlin"
+    with pytest.raises(ValueError, match="Unknown language"):
+        ingest(str(root), languages=["java", "cobol"])
+
+
+def test_ingest_rejects_unknown_single_language(fixtures_dir: Path):
+    root = fixtures_dir / "maven_java_kotlin"
+    with pytest.raises(ValueError, match="Unknown language"):
+        ingest(str(root), language="cobol")

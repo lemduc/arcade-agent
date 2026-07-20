@@ -52,13 +52,14 @@ def _resolve_languages(
 
 
 def detect_languages_from_files(files: list[Path]) -> list[str]:
-    """Return sorted language names present among *files*."""
+    """Return sorted language names present among *files* (by suffix)."""
     found: set[str] = set()
     for path in files:
-        if not path.is_file():
+        ext = path.suffix.lower()
+        if not ext:
             continue
         try:
-            parser = get_parser(path.suffix.lower())
+            parser = get_parser(ext)
         except KeyError:
             continue
         found.add(parser.language)

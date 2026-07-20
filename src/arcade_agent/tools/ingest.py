@@ -179,6 +179,17 @@ def _discover_files(
     return files
 
 
+def _validate_known_languages(languages: list[str]) -> list[str]:
+    """Reject unknown language names before discovery expands to all extensions."""
+    unknown = [lang for lang in languages if lang not in _LANG_EXTENSIONS]
+    if unknown:
+        available = ", ".join(sorted(_LANG_EXTENSIONS))
+        raise ValueError(
+            f"Unknown language(s): {', '.join(unknown)}. Supported: {available}"
+        )
+    return languages
+
+
 def _resolve_languages(
     path: Path,
     language: str | None,
@@ -189,14 +200,14 @@ def _resolve_languages(
     if languages is not None:
         if not languages:
             raise ValueError("languages must be non-empty")
-        return list(languages)
+        return _validate_known_languages(list(languages))
     if language == "multi":
         detected = _detect_languages(path)
         if not detected:
             raise ValueError(f"Could not detect languages in {path}")
         return detected
     if language:
-        return [language]
+        return _validate_known_languages([language])
     primary = _detect_language(path)
     return [primary] if primary else []
 
