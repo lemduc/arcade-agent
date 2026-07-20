@@ -25,9 +25,6 @@ def resolve_name(
         if aliased in entities:
             return aliased
 
-    if "." in simple_name and simple_name in entities:
-        return simple_name
-
     for imp in source_entity.imports:
         if imp.endswith(f".{simple_name}") and imp in entities:
             return imp
@@ -36,6 +33,12 @@ def resolve_name(
         same_pkg_fqn = f"{source_entity.package}.{simple_name}"
         if same_pkg_fqn in entities:
             return same_pkg_fqn
+
+    # A qualified name is already explicit. Falling back to its leaf could link
+    # an unavailable external type (e.g. external.Base) to an unrelated local
+    # Base entity, creating a false cross-language dependency.
+    if "." in simple_name:
+        return None
 
     leaf = simple_name.split(".")[-1]
     if leaf in fqn_index:
@@ -52,10 +55,11 @@ def _aliases_for(entity: Entity) -> dict[str, str]:
 
 
 def _build_fqn_index(entities: dict[str, Entity]) -> dict[str, str]:
-    index: dict[str, str] = {}
+    candidates: dict[str, list[str]] = {}
     for entity in entities.values():
-        index[entity.name] = entity.fqn
-    return index
+        candidates.setdefault(entity.name, []).append(entity.fqn)
+    # Unqualified fallback is only safe when the leaf name is globally unique.
+    return {name: fqns[0] for name, fqns in candidates.items() if len(fqns) == 1}
 
 
 def relink_edges(graph: DependencyGraph) -> DependencyGraph:
@@ -82,9 +86,8 @@ def relink_edges(graph: DependencyGraph) -> DependencyGraph:
         for imp in entity.imports:
             if imp in entities:
                 add(entity.fqn, imp, "import")
-            else:
-                simple = imp.split(".")[-1]
-                resolved = fqn_index.get(simple)
+            elif "." not in imp:
+                resolved = fqn_index.get(imp)
                 if resolved and resolved != entity.fqn:
                     add(entity.fqn, resolved, "import")
 

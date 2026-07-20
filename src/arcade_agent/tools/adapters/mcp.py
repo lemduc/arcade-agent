@@ -105,6 +105,41 @@ def _apply_budget(data: Any, max_tokens: int | None) -> Any:
     return enforce_budget(data, max_tokens)
 
 
+def _resolve_parse_source(
+    source_path: str,
+    language: str | None,
+    languages: list[str] | None,
+    files: list[str] | None,
+) -> tuple[str, str | None, list[str] | None, list[str] | None]:
+    """Resolve an ingest session into the concrete inputs required by parse.
+
+    MCP clients should not need to discover a temporary clone path or repeat the
+    language/file selection already made by ``ingest``. Explicit parse arguments
+    still take precedence when a caller intentionally wants a narrower parse.
+    """
+    if source_path not in _session:
+        return source_path, language, languages, files
+
+    from arcade_agent.tools.ingest import IngestedRepo
+
+    ingested = _session[source_path]["value"]
+    if not isinstance(ingested, IngestedRepo):
+        label = _session[source_path]["label"]
+        raise ValueError(
+            f"source_path session {source_path!r} contains {label}, not IngestedRepo"
+        )
+
+    if language is None and languages is None:
+        if ingested.languages:
+            languages = list(ingested.languages)
+        elif ingested.language:
+            language = ingested.language
+    if files is None:
+        files = [str(path) for path in ingested.source_files]
+
+    return str(ingested.path), language, languages, files
+
+
 def _build_server():  # type: ignore[no-untyped-def]
     """Build and return the FastMCP server instance.
 
@@ -127,8 +162,10 @@ def _build_server():  # type: ignore[no-untyped-def]
             "Use 'analyze' for a one-call end-to-end pipeline (offloaded from the event loop), "
             "or compose individual tools. "
             "Use session IDs from previous tool outputs as inputs to subsequent tools. "
-            "For example: call 'parse' to get a session_id, then pass that session_id "
-            "as dep_graph to 'recover'."
+            "For example: call 'ingest' and pass its session_id as source_path to "
+            "'parse', then pass the parse session_id as dep_graph to 'recover'. "
+            "For polyglot repositories, pass languages such as ['java', 'kotlin'] "
+            "to ingest; parse inherits that selection from the ingest session."
         ),
     )
 
@@ -190,7 +227,9 @@ def _build_server():  # type: ignore[no-untyped-def]
         session_id as the dep_graph argument to recover, detect_smells, etc.
 
         Args:
-            source_path: Root directory of the project.
+            source_path: Root directory of the project, or a session ID returned by
+                ingest. An ingest session carries its selected files and languages
+                into this parse call unless explicitly overridden.
             language: Language to parse (java, python, c, typescript, go, kotlin),
                 or "multi" to parse every detected language and relink
                 cross-language edges.
@@ -202,6 +241,9 @@ def _build_server():  # type: ignore[no-untyped-def]
         """
         from arcade_agent.tools.parse import parse as _parse
 
+        source_path, language, languages, files = _resolve_parse_source(
+            source_path, language, languages, files
+        )
         graph = _parse(
             source_path=source_path,
             language=language,

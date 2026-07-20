@@ -95,7 +95,7 @@ class TestMcpMultilangE2E:
         languages = {e["language"] for e in full["data"]["entities"].values()}
         assert languages == {"java", "kotlin"}
 
-    def test_ingest_languages_then_parse_maven_fixture(self, server):
+    def test_ingest_session_chains_languages_and_files_into_parse(self, server):
         ingest_result = _call(
             server,
             "ingest",
@@ -109,8 +109,7 @@ class TestMcpMultilangE2E:
             server,
             "parse",
             {
-                "source_path": _MAVEN,
-                "languages": ["java", "kotlin"],
+                "source_path": ingest_result["session_id"],
                 "use_cache": False,
             },
         )
@@ -119,3 +118,21 @@ class TestMcpMultilangE2E:
         entity_fqns = set(full["data"]["entities"])
         assert "com.example.JavaGreeter" in entity_fqns
         assert "com.example.KotlinGreeter" in entity_fqns
+
+    def test_parse_rejects_non_ingest_source_session(self, server):
+        from mcp.server.fastmcp.exceptions import ToolError
+
+        parsed = _call(
+            server,
+            "parse",
+            {"source_path": _MIXED, "language": "multi", "use_cache": False},
+        )
+
+        async def _run():
+            return await server.call_tool(
+                "parse",
+                {"source_path": parsed["session_id"], "use_cache": False},
+            )
+
+        with pytest.raises(ToolError, match="not IngestedRepo"):
+            asyncio.run(_run())

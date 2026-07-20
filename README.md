@@ -20,8 +20,8 @@ Provides composable tools for parsing source code, recovering architecture, dete
 ```bash
 pip install -e ".[dev]"
 
-# With MCP server support (for AI agent integration)
-pip install -e ".[mcp,dev]"
+# With MCP and all optional language parsers (for polyglot AI agent integration)
+pip install -e ".[mcp,languages,dev]"
 ```
 
 ## Quick Start
@@ -205,6 +205,20 @@ Agent: call detect_smells(architecture="d4e5f6", dep_graph="a1b2c3")
 Agent: call get_full_result(session_id="a1b2c3", max_tokens=2000)
        → full graph data, truncated to fit token budget
 ```
+
+For a polyglot repository, let `ingest` preserve its file selection and pass
+the returned session directly to `parse`:
+
+```
+Agent: call ingest(source="/path/to/project", languages=["java", "kotlin"])
+       → {session_id: "p1q2r3", languages: ["java", "kotlin"], ...}
+
+Agent: call parse(source_path="p1q2r3")
+       → {session_id: "a1b2c3", num_entities: 420, num_edges: 960, ...}
+```
+
+Use `language="multi"` instead when every detected supported language should
+be parsed automatically.
 
 ## LLM-Powered Analysis
 

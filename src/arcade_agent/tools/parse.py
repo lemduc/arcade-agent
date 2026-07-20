@@ -36,19 +36,19 @@ def _resolve_languages(
         return list(languages)
     if language == "multi":
         discover = file_paths if file_paths is not None else list(root.rglob("*"))
-        detected = detect_languages_from_files(discover)
-        if not detected:
+        detected_languages = detect_languages_from_files(discover)
+        if not detected_languages:
             raise ValueError(f"Could not detect languages in {root}")
-        return detected
+        return detected_languages
     if language:
         return [language]
     discover = file_paths if file_paths is not None else [
         f for f in root.rglob("*") if f.is_file()
     ]
-    detected = detect_language(discover)
-    if not detected:
+    detected_language = detect_language(discover)
+    if not detected_language:
         raise ValueError(f"Could not detect language in {root}")
-    return [detected]
+    return [detected_language]
 
 
 def detect_languages_from_files(files: list[Path]) -> list[str]:
