@@ -28,13 +28,13 @@ python examples/basic_analysis.py /path/to/java/project
 
 ## Architecture
 
-Tool library with registry pattern — no pipeline, no CLI orchestrator. Each tool is independently callable.
+Tool library with registry pattern. Each tool is independently callable; there is no CLI orchestrator. An optional `analyze` convenience tool composes the common ingest → parse → recover → smells → metrics path for agents/MCP (async wrapper around sequential sync stages), without replacing the composable tools.
 
 ```
 registry.py          # @tool decorator, discovery
 parsers/             # Language-agnostic parsing (tree-sitter)
 models/              # Shared dataclasses (DependencyGraph, Architecture, etc.)
-tools/               # composable tools (ingest, parse, recover, detect_smells, summarize, api_surface, diff_impact, context_for_task, ...)
+tools/               # composable tools (ingest, parse, recover, detect_smells, summarize, analyze, api_surface, diff_impact, context_for_task, ...)
 algorithms/          # Pure algorithm implementations (clustering, SCC, metrics)
 exporters/           # Output format adapters (HTML, DOT, JSON, RSF, Mermaid)
 adapters/            # Framework integration (MCP stub for v2)

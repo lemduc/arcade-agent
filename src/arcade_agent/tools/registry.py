@@ -16,6 +16,7 @@ class ToolDef:
     fn: Callable
     input_schema: dict = field(default_factory=dict)
     output_schema: dict = field(default_factory=dict)
+    is_async: bool = False
 
 
 def tool(name: str, description: str) -> Callable:
@@ -28,6 +29,7 @@ def tool(name: str, description: str) -> Callable:
             fn=fn,
             input_schema=_schema_from_hints(fn),
             output_schema=_schema_from_return(fn),
+            is_async=inspect.iscoroutinefunction(fn),
         )
         return fn
 

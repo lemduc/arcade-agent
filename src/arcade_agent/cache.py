@@ -3,6 +3,8 @@
 import hashlib
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 
 from arcade_agent.parsers.graph import DependencyGraph
@@ -92,7 +94,18 @@ def put_cached_graph(project_root: str, key: str, graph: DependencyGraph) -> Non
     cache_dir = _cache_dir(Path(project_root))
     cache_dir.mkdir(parents=True, exist_ok=True)
     cache_file = cache_dir / f"{key}.json"
-    cache_file.write_text(json.dumps(graph_to_dict(graph), indent=2) + "\n")
+    payload = json.dumps(graph_to_dict(graph), indent=2) + "\n"
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{key}.", suffix=".tmp", dir=cache_dir)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tmp_file:
+            tmp_file.write(payload)
+        os.replace(tmp_name, cache_file)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
     logger.info("Cached parse result %s (%d entities)", key[:12], graph.num_entities)
 
 

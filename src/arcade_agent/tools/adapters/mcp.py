@@ -120,6 +120,8 @@ def _build_server():  # type: ignore[no-untyped-def]
         instructions=(
             "Software architecture analysis toolkit. "
             "Tools produce complex results stored in a session. "
+            "Use 'analyze' for a one-call end-to-end pipeline (offloaded from the event loop), "
+            "or compose individual tools. "
             "Use session IDs from previous tool outputs as inputs to subsequent tools. "
             "For example: call 'parse' to get a session_id, then pass that session_id "
             "as dep_graph to 'recover'."
@@ -195,6 +197,101 @@ def _build_server():  # type: ignore[no-untyped-def]
         )
         summary = _make_summary(graph, "DependencyGraph")
         return json.dumps(_apply_budget(summary, max_tokens), indent=2)
+
+    # -- analyze ---------------------------------------------------------------
+
+    @server.tool()
+    async def analyze(
+        source: str,
+        language: str | None = None,
+        source_root: str | None = None,
+        work_dir: str | None = None,
+        exclude_tests: bool = True,
+        algorithm: str = "pkg",
+        num_clusters: int | None = None,
+        similarity_measure: str = "uem",
+        pkg_depth: int | None = None,
+        hybrid_weight: float = 0.5,
+        use_cache: bool = True,
+        use_llm: bool = False,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Run the complete architecture analysis pipeline asynchronously.
+
+        Blocking stages run sequentially in a worker thread so the MCP event
+        loop stays responsive. Per-stage session IDs are stored as each stage
+        completes, so a later failure still leaves earlier artifacts reusable.
+        Session IDs match the conventions of the fine-grained MCP tools.
+        """
+        from arcade_agent.tools.analyze import (
+            PartialAnalysisError,
+        )
+        from arcade_agent.tools.analyze import (
+            analyze as _analyze,
+        )
+
+        stage_summaries: dict[str, Any] = {}
+
+        def _on_stage(stage: str, value: Any) -> None:
+            if stage == "repository":
+                stage_summaries["repository"] = _make_summary(value, "IngestedRepo")
+            elif stage == "graph":
+                stage_summaries["graph"] = _make_summary(value, "DependencyGraph")
+            elif stage == "architecture":
+                stage_summaries["architecture"] = _make_summary(value, "Architecture")
+            elif stage == "smells":
+                stage_summaries["smells"] = {
+                    "session_id": _store(value, "SmellList"),
+                    "num_smells": len(value),
+                }
+            elif stage == "metrics":
+                stage_summaries["metrics"] = {
+                    "session_id": _store(value, "MetricList"),
+                    "num_metrics": len(value),
+                }
+
+        try:
+            result = await _analyze(
+                source=source,
+                language=language,
+                source_root=source_root,
+                work_dir=work_dir,
+                exclude_tests=exclude_tests,
+                algorithm=algorithm,
+                num_clusters=num_clusters,
+                similarity_measure=similarity_measure,
+                pkg_depth=pkg_depth,
+                hybrid_weight=hybrid_weight,
+                use_cache=use_cache,
+                use_llm=use_llm,
+                on_stage=_on_stage,
+            )
+        except PartialAnalysisError as exc:
+            error_payload: dict[str, Any] = {
+                "type": "PartialAnalysisError",
+                "error": str(exc),
+                "failed_stage": exc.stage,
+                **stage_summaries,
+            }
+            if max_tokens is not None:
+                error_payload = enforce_budget(error_payload, max_tokens)
+            return json.dumps(error_payload, indent=2)
+
+        summary: dict[str, Any] = {
+            "type": "AnalysisResult",
+            "repository": stage_summaries["repository"],
+            "graph": stage_summaries["graph"],
+            "architecture": stage_summaries["architecture"],
+            "smells": stage_summaries["smells"],
+            "metrics": stage_summaries["metrics"],
+            "num_smells": len(result.smells),
+            "num_metrics": len(result.metrics),
+        }
+        # Composite summaries include nested graph/architecture keys, so the
+        # domain-aware truncate_result path is a no-op. Use enforce_budget.
+        if max_tokens is not None:
+            summary = enforce_budget(summary, max_tokens)
+        return json.dumps(summary, indent=2)
 
     # -- recover ---------------------------------------------------------------
 

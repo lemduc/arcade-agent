@@ -53,10 +53,22 @@ metrics = compute_metrics(arch, graph)
 visualize(repo.name, repo.version, graph, arch, smells, output="report.html")
 ```
 
+For async applications, the one-call `analyze` tool keeps the event loop
+responsive by running the sequential analysis stages in a worker thread
+(other sync MCP tools still run inline on the event loop):
+
+```python
+from arcade_agent.tools.analyze import analyze
+
+result = await analyze("/path/to/project", language="python", algorithm="pkg")
+print(len(result.architecture.components), len(result.smells))
+```
+
 ## Tools
 
 | Tool | Description |
 |------|-------------|
+| `analyze` | One-call ingest → parse → recover → smells → metrics (async; offloads blocking work) |
 | `ingest` | Clone/load source code, detect versions, discover files |
 | `parse` | Parse source → DependencyGraph via tree-sitter |
 | `recover` | Recover architecture (PKG, WCA, ACDC, ARC, LIMBO) |
@@ -168,14 +180,19 @@ Add to your Claude Code MCP settings:
 
 ### How it works
 
-1. **Session store** — Tools like `parse` and `recover` return compact summaries with a `session_id`. Pass session IDs to downstream tools instead of full data objects.
-2. **Token budget** — Every tool accepts an optional `max_tokens` parameter. Outputs are progressively truncated (entity details → edge summaries → component counts) to fit.
-3. **Parse caching** — Parsed dependency graphs are cached to `.arcade-cache/` keyed by file modification times. Repeated analysis of the same codebase skips re-parsing.
-4. **On-demand detail** — Call `get_full_result(session_id)` to retrieve complete data when the summary isn't enough.
+1. **Async pipeline** — `analyze` runs the complete sequential pipeline in a worker thread so the MCP event loop stays responsive, and returns reusable session IDs for every artifact.
+2. **Session store** — Tools like `parse` and `recover` return compact summaries with a `session_id`. Pass session IDs to downstream tools instead of full data objects.
+3. **Token budget** — Every tool accepts an optional `max_tokens` parameter. Outputs are progressively truncated (entity details → edge summaries → component counts) to fit.
+4. **Parse caching** — Parsed dependency graphs are cached to `.arcade-cache/` keyed by file modification times. Repeated analysis of the same codebase skips re-parsing.
+5. **On-demand detail** — Call `get_full_result(session_id)` to retrieve complete data when the summary isn't enough.
 
 ### Example agent workflow
 
 ```
+Agent: call analyze(source="/path/to/project", language="python")
+       → {graph: {session_id: "a1b2c3", ...}, architecture: {session_id: "d4e5f6", ...}, ...}
+
+# Or compose individual stages:
 Agent: call parse(source_path="/path/to/project")
        → {session_id: "a1b2c3", num_entities: 170, num_edges: 470, ...}
 

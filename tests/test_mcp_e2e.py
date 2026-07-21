@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -93,6 +94,89 @@ class TestMcpE2E:
         assert recover_result["num_components"] > 0
         assert recover_result["type"] == "Architecture"
 
+    def test_async_analyze_returns_reusable_pipeline_sessions(self, server):
+        from arcade_agent.tools.adapters.mcp import _session
+
+        result = _call(server, "analyze", {
+            "source": _REPO_ROOT,
+            "language": "python",
+            "use_cache": False,
+        })
+
+        assert result["type"] == "AnalysisResult"
+        assert result["graph"]["num_entities"] > 0
+        assert result["architecture"]["num_components"] > 0
+        assert result["num_metrics"] > 0
+        assert isinstance(result["smells"], dict)
+        assert isinstance(result["metrics"], dict)
+        assert "session_id" in result["smells"]
+        assert "session_id" in result["metrics"]
+        assert _session[result["smells"]["session_id"]]["label"] == "SmellList"
+        assert _session[result["metrics"]["session_id"]]["label"] == "MetricList"
+
+        graph_sid = result["graph"]["session_id"]
+        architecture_sid = result["architecture"]["session_id"]
+        query_result = _call(server, "compute_metrics", {
+            "architecture": architecture_sid,
+            "dep_graph": graph_sid,
+        })
+        assert query_result["session_id"]
+
+        smell_sid = result["smells"]["session_id"]
+        visualize_result = _call(server, "get_full_result", {"session_id": smell_sid})
+        assert visualize_result["session_id"] == smell_sid
+        assert visualize_result["type"] == "SmellList"
+
+    def test_async_analyze_enforces_max_tokens(self, server):
+        full = _call(server, "analyze", {
+            "source": _REPO_ROOT,
+            "language": "python",
+            "use_cache": False,
+        })
+        tiny = _call(server, "analyze", {
+            "source": _REPO_ROOT,
+            "language": "python",
+            "use_cache": False,
+            "max_tokens": 50,
+        })
+        assert len(json.dumps(tiny)) < len(json.dumps(full))
+        assert tiny.get("_budget_truncated") is True
+        assert tiny["type"] == "AnalysisResult"
+
+    def test_async_analyze_preserves_sessions_on_terminal_failure(self, server, monkeypatch):
+        import arcade_agent.tools.detect_smells as detect_smells_mod
+        from arcade_agent.tools.adapters.mcp import _session
+
+        monkeypatch.setattr(
+            detect_smells_mod,
+            "detect_smells",
+            Mock(side_effect=RuntimeError("forced smell failure")),
+        )
+
+        result = _call(server, "analyze", {
+            "source": _REPO_ROOT,
+            "language": "python",
+            "use_cache": False,
+        })
+
+        assert result["type"] == "PartialAnalysisError"
+        assert result["failed_stage"] == "terminal"
+        assert "repository" in result
+        assert "graph" in result
+        assert "architecture" in result
+        assert "smells" not in result
+
+        graph_sid = result["graph"]["session_id"]
+        architecture_sid = result["architecture"]["session_id"]
+        assert graph_sid in _session
+        assert architecture_sid in _session
+
+        metrics = _call(server, "compute_metrics", {
+            "architecture": architecture_sid,
+            "dep_graph": graph_sid,
+        })
+        assert metrics["session_id"]
+
     def test_list_sessions_populated(self, server):
         result = _call(server, "list_sessions", {})
         assert "sessions" in result
@@ -130,4 +214,3 @@ class TestMcpE2E:
         """No budget flag should appear when max_tokens is not set."""
         result = _call(server, "parse", {"source_path": _REPO_ROOT, "language": "python"})
         assert "_budget_truncated" not in result
-
