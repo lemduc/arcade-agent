@@ -1,6 +1,15 @@
 # arcade-agent
 
 [![CI](https://github.com/lemduc/arcade-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/lemduc/arcade-agent/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/arcade-agent)](https://pypi.org/project/arcade-agent/)
+[![Python versions](https://img.shields.io/pypi/pyversions/arcade-agent)](https://pypi.org/project/arcade-agent/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![MCP compatible](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io/)
+[![GitHub stars](https://img.shields.io/github/stars/lemduc/arcade-agent?style=social)](https://github.com/lemduc/arcade-agent/stargazers)
+
+17 MCP tools · 4 task-shaped context tools · one git-versioned baseline · one pip install
+
+Docs: https://arcade-agent.dev
 
 Framework-agnostic tool library for software architecture analysis.
 
