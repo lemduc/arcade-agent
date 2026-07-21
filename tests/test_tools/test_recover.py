@@ -91,7 +91,7 @@ def test_package_based_recovery_reassigns_thin_facades():
                 source="com.example.api.facade",
                 target="com.example.impl.worker",
                 relation="import",
-            )
+            ),
         ],
         packages={
             "com.example.api": [
@@ -113,6 +113,121 @@ def test_package_based_recovery_reassigns_thin_facades():
     assert membership["com.example.api.facade"] == membership["com.example.impl.worker"]
     assert membership["com.example.api.registry"] != membership["com.example.impl.worker"]
     assert "facade refinement" in arch.rationale
+
+
+def test_package_recovery_reassigns_called_facade_from_oversized_bucket():
+    api_entities = {
+        f"com.example.api.peer{i}": Entity(
+            fqn=f"com.example.api.peer{i}",
+            name=f"peer{i}",
+            package="com.example.api",
+            file_path=f"peer{i}.py",
+            kind="function",
+            language="python",
+        )
+        for i in range(20)
+    }
+    facade = Entity(
+        fqn="com.example.api.facade",
+        name="facade",
+        package="com.example.api",
+        file_path="facade.py",
+        kind="function",
+        language="python",
+    )
+    worker = Entity(
+        fqn="com.example.impl.worker",
+        name="worker",
+        package="com.example.impl",
+        file_path="worker.py",
+        kind="function",
+        language="python",
+    )
+    caller = Entity(
+        fqn="com.example.cli.command",
+        name="command",
+        package="com.example.cli",
+        file_path="command.py",
+        kind="function",
+        language="python",
+    )
+    graph = DependencyGraph(
+        entities={
+            **api_entities,
+            facade.fqn: facade,
+            worker.fqn: worker,
+            caller.fqn: caller,
+        },
+        edges=[
+            Edge(source=facade.fqn, target=worker.fqn, relation="import"),
+            Edge(source=caller.fqn, target=facade.fqn, relation="import"),
+        ],
+        packages={
+            "com.example.api": [*api_entities, facade.fqn],
+            "com.example.impl": [worker.fqn],
+            "com.example.cli": [caller.fqn],
+        },
+    )
+
+    arch = recover(graph, algorithm="pkg")
+    membership = {
+        entity_fqn: component.name
+        for component in arch.components
+        for entity_fqn in component.entities
+    }
+
+    assert membership[facade.fqn] == membership[worker.fqn]
+    assert membership[caller.fqn] != membership[worker.fqn]
+    assert {membership[fqn] for fqn in api_entities} == {"Api"}
+
+
+def test_package_recovery_keeps_called_facade_in_compact_boundary():
+    entities = {
+        fqn: Entity(
+            fqn=fqn,
+            name=fqn.rsplit(".", 1)[-1],
+            package=package,
+            file_path=f"{fqn.rsplit('.', 1)[-1]}.py",
+            kind="function",
+            language="python",
+        )
+        for fqn, package in {
+            "com.example.api.facade": "com.example.api",
+            "com.example.api.peer": "com.example.api",
+            "com.example.impl.worker": "com.example.impl",
+            "com.example.cli.command": "com.example.cli",
+        }.items()
+    }
+    graph = DependencyGraph(
+        entities=entities,
+        edges=[
+            Edge(
+                source="com.example.api.facade",
+                target="com.example.impl.worker",
+                relation="import",
+            ),
+            Edge(
+                source="com.example.cli.command",
+                target="com.example.api.facade",
+                relation="import",
+            ),
+        ],
+        packages={
+            "com.example.api": ["com.example.api.facade", "com.example.api.peer"],
+            "com.example.impl": ["com.example.impl.worker"],
+            "com.example.cli": ["com.example.cli.command"],
+        },
+    )
+
+    arch = recover(graph, algorithm="pkg")
+    membership = {
+        entity_fqn: component.name
+        for component in arch.components
+        for entity_fqn in component.entities
+    }
+
+    assert membership["com.example.api.facade"] == "Api"
+    assert membership["com.example.api.facade"] != membership["com.example.impl.worker"]
 
 
 def test_unknown_algorithm(sample_graph):

@@ -4,6 +4,7 @@ from arcade_agent.algorithms.acdc import acdc
 from arcade_agent.algorithms.arc import arc
 from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.clustering import wca
+from arcade_agent.algorithms.concern import CONCERN_OVERLOAD_ENTITY_THRESHOLD
 from arcade_agent.algorithms.limbo import limbo
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.registry import tool
@@ -86,8 +87,11 @@ def _refine_facade_groups(
     Package-only grouping can overstate architectural coupling when a package
     mainly exposes adapter functions that delegate straight into one subsystem.
     This refinement moves an entity only when it has no ties to peers in its
-    current group and all of its known dependencies point outward to one other
-    group. Entities without dependencies or with mixed responsibilities stay put.
+    current group and all of its known outgoing dependencies point outward to
+    one other group. For an oversized package bucket, incoming callers from
+    other groups do not define a facade's responsibility and therefore do not
+    pin it to the bucket. Compact public boundaries remain package-anchored.
+    Entities without dependencies or with mixed responsibilities stay put.
     """
     membership = _entity_group_membership(groups)
     utility_hubs = _local_utility_hubs(dep_graph, membership)
@@ -112,7 +116,7 @@ def _refine_facade_groups(
         incoming_sources = incoming_by_entity.get(entity_fqn, [])
         own_group_links = 0
         target_groups: set[str] = set()
-        disqualify = False
+        has_external_callers = False
 
         for neighbor in outgoing_targets:
             neighbor_group = membership.get(neighbor)
@@ -134,10 +138,14 @@ def _refine_facade_groups(
                     continue
                 own_group_links += 1
             else:
-                disqualify = True
-                break
+                has_external_callers = True
 
-        if disqualify or own_group_links > 0 or len(target_groups) != 1:
+        is_oversized_bucket = len(groups[own_group]) > CONCERN_OVERLOAD_ENTITY_THRESHOLD
+        if (
+            own_group_links > 0
+            or len(target_groups) != 1
+            or (has_external_callers and not is_oversized_bucket)
+        ):
             continue
 
         moves[entity_fqn] = next(iter(target_groups))
