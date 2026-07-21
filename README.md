@@ -73,6 +73,8 @@ visualize(repo.name, repo.version, graph, arch, smells, output="report.html")
 | `dependency_cone` | Upstream/downstream dependency cone of an entity or file, with depth control |
 | `context_for_task` | Rank the minimal set of files to read for a natural-language task |
 
+Plus two session helpers — `get_full_result` and `list_sessions` — for a total of 17 MCP tools.
+
 ## Balanced Architecture Score
 
 arcade-agent keeps the original ARCADE-style quality metrics (`RCI`, `TurboMQ`,
