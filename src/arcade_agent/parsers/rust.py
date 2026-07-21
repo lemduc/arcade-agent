@@ -10,6 +10,7 @@ kept intact and each member crate gets a stable graph prefix.
 
 from __future__ import annotations
 
+import logging
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,7 @@ from arcade_agent.parsers.base import LanguageParser, register_parser
 from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 
 RUST_LANGUAGE = Language(tsrust.language())
+logger = logging.getLogger(__name__)
 
 _MAX_FILE_BYTES = 1_000_000
 _TYPE_ITEMS = {
@@ -82,8 +84,11 @@ def _identifier(text: str) -> str:
 def _cargo_data(directory: Path) -> dict[str, Any]:
     manifest = directory / "Cargo.toml"
     try:
-        return tomllib.loads(manifest.read_text()) if manifest.is_file() else {}
-    except (OSError, tomllib.TOMLDecodeError):
+        if not manifest.is_file():
+            return {}
+        with manifest.open("rb") as manifest_file:
+            return tomllib.load(manifest_file)
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
         return {}
 
 
@@ -132,69 +137,101 @@ def _path_segments(node: Node | None) -> tuple[str, ...]:
     """Extract ``a::b::Name`` segments from a path-like AST node."""
     if node is None:
         return ()
-    if node.type in {
+
+    segments: list[str] = []
+    stack = [node]
+    leaf_types = {
         "identifier",
         "type_identifier",
         "crate",
         "self",
         "super",
         "metavariable",
-    }:
-        return (_identifier(_get_text(node)),)
+    }
+    while stack:
+        current = stack.pop()
+        if current.type in leaf_types:
+            segments.append(_identifier(_get_text(current)))
+            continue
 
-    path = node.child_by_field_name("path")
-    name = node.child_by_field_name("name")
-    if path is not None or name is not None:
-        return (*_path_segments(path), *_path_segments(name))
+        path = current.child_by_field_name("path")
+        name = current.child_by_field_name("name")
+        if path is not None or name is not None:
+            # LIFO order: visit the path before its final name.
+            if name is not None:
+                stack.append(name)
+            if path is not None:
+                stack.append(path)
+            continue
 
-    # use_wildcard has no named fields in tree-sitter-rust 0.24.
-    if node.type == "use_wildcard" and node.named_children:
-        return _path_segments(node.named_children[0])
+        # use_wildcard has no named fields in tree-sitter-rust 0.24.
+        if current.type == "use_wildcard" and current.named_children:
+            stack.append(current.named_children[0])
+            continue
 
-    # References through generic paths only need the base type name.
-    if node.type == "generic_type":
-        return _path_segments(node.child_by_field_name("type"))
-    return ()
+        # References through generic paths only need the base type name.
+        if current.type == "generic_type":
+            generic_type = current.child_by_field_name("type")
+            if generic_type is not None:
+                stack.append(generic_type)
+
+    return tuple(segments)
 
 
 def _flatten_use(node: Node, prefix: tuple[str, ...] = ()) -> list[_Import]:
     """Flatten a Rust use tree into concrete imports."""
-    if node.type == "use_declaration":
-        argument = node.child_by_field_name("argument")
-        return _flatten_use(argument, prefix) if argument is not None else []
+    imports: list[_Import] = []
+    pending: list[tuple[Node, tuple[str, ...]]] = [(node, prefix)]
+    while pending:
+        current, current_prefix = pending.pop()
 
-    if node.type == "scoped_use_list":
-        path = (*prefix, *_path_segments(node.child_by_field_name("path")))
-        use_list = node.child_by_field_name("list")
-        if use_list is None:
-            return []
-        imports: list[_Import] = []
-        for child in use_list.named_children:
-            if child.type == "self":
-                alias = path[-1] if path else "self"
-                imports.append(_Import(path=path, alias=alias))
-            else:
-                imports.extend(_flatten_use(child, path))
-        return imports
+        if current.type == "use_declaration":
+            argument = current.child_by_field_name("argument")
+            if argument is not None:
+                pending.append((argument, current_prefix))
+            continue
 
-    if node.type == "use_list":
-        imports = []
-        for child in node.named_children:
-            imports.extend(_flatten_use(child, prefix))
-        return imports
+        if current.type == "scoped_use_list":
+            path = (
+                *current_prefix,
+                *_path_segments(current.child_by_field_name("path")),
+            )
+            use_list = current.child_by_field_name("list")
+            if use_list is not None:
+                pending.extend((child, path) for child in reversed(use_list.named_children))
+            continue
 
-    if node.type == "use_as_clause":
-        path = (*prefix, *_path_segments(node.child_by_field_name("path")))
-        alias_node = node.child_by_field_name("alias")
-        alias = _identifier(_get_text(alias_node)) if alias_node is not None else path[-1]
-        return [_Import(path=path, alias=alias)] if path else []
+        if current.type == "use_list":
+            pending.extend((child, current_prefix) for child in reversed(current.named_children))
+            continue
 
-    if node.type == "use_wildcard":
-        path = (*prefix, *_path_segments(node))
-        return [_Import(path=path, alias="*", wildcard=True)] if path else []
+        if current.type == "self" and current_prefix:
+            imports.append(_Import(path=current_prefix, alias=current_prefix[-1]))
+            continue
 
-    path = (*prefix, *_path_segments(node))
-    return [_Import(path=path, alias=path[-1])] if path else []
+        if current.type == "use_as_clause":
+            path = (
+                *current_prefix,
+                *_path_segments(current.child_by_field_name("path")),
+            )
+            if not path:
+                continue
+            alias_node = current.child_by_field_name("alias")
+            alias = _identifier(_get_text(alias_node)) if alias_node is not None else path[-1]
+            imports.append(_Import(path=path, alias=alias))
+            continue
+
+        if current.type == "use_wildcard":
+            path = (*current_prefix, *_path_segments(current))
+            if path:
+                imports.append(_Import(path=path, alias="*", wildcard=True))
+            continue
+
+        path = (*current_prefix, *_path_segments(current))
+        if path:
+            imports.append(_Import(path=path, alias=path[-1]))
+
+    return imports
 
 
 def _extract_imports(container: Node) -> list[_Import]:
@@ -203,6 +240,17 @@ def _extract_imports(container: Node) -> list[_Import]:
         if child.type == "use_declaration":
             imports.extend(_flatten_use(child))
     return imports
+
+
+def _is_cfg_test_attribute(node: Node) -> bool:
+    """Return whether an attribute is exactly ``#[cfg(test)]``."""
+    if node.type != "attribute_item":
+        return False
+    return any(
+        "".join(_get_text(child).split()) == "cfg(test)"
+        for child in node.named_children
+        if child.type == "attribute"
+    )
 
 
 def _references(node: Node) -> _References:
@@ -215,6 +263,14 @@ def _references(node: Node) -> _References:
             path = _path_segments(current)
             if len(path) > 1:
                 qualified.add(path)
+                # The leading segment drives import-alias resolution. The
+                # immediate owner prefix preserves references such as
+                # ``Type::associated_item`` without recomputing every nested
+                # scoped path (which is quadratic for generated long paths).
+                simple.add(path[0])
+                if len(path) > 2:
+                    qualified.add(path[:-1])
+                continue
         elif current.type in {"identifier", "type_identifier"}:
             simple.add(_identifier(_get_text(current)))
         stack.extend(current.named_children)
@@ -225,18 +281,23 @@ def _base_type_path(node: Node | None) -> tuple[str, ...]:
     """Get the implemented type path without generic arguments."""
     if node is None:
         return ()
-    # Wrapper nodes can contain lifetimes before the actual type. Follow the
-    # grammar's explicit type field so ``&'a mut T`` resolves to T, not ``a``.
-    wrapped_type = node.child_by_field_name("type")
-    if node.type in {"reference_type", "pointer_type", "array_type", "slice_type"}:
-        return _base_type_path(wrapped_type)
-    direct = _path_segments(node)
-    if direct:
-        return direct
-    for child in node.named_children:
-        path = _base_type_path(child)
-        if path:
-            return path
+
+    stack = [node]
+    wrapper_types = {"reference_type", "pointer_type", "array_type", "slice_type"}
+    while stack:
+        current = stack.pop()
+        # Wrapper nodes can contain lifetimes before the actual type. Follow
+        # the explicit type field so ``&'a mut T`` resolves to T, not ``a``.
+        if current.type in wrapper_types:
+            wrapped_type = current.child_by_field_name("type")
+            if wrapped_type is not None:
+                stack.append(wrapped_type)
+            continue
+
+        direct = _path_segments(current)
+        if direct:
+            return direct
+        stack.extend(reversed(current.named_children))
     return ()
 
 
@@ -360,136 +421,215 @@ class RustParser(LanguageParser):
             crate: tuple[str, ...],
             is_file_root: bool = False,
         ) -> None:
-            imports = _extract_imports(container)
-            direct_entities = 0
+            container_stack = [(container, module, is_file_root)]
+            while container_stack:
+                current_container, current_module, current_is_file_root = container_stack.pop()
+                imports = _extract_imports(current_container)
+                direct_entities = 0
+                nested_containers: list[tuple[Node, tuple[str, ...], bool]] = []
+                pending_attributes: list[Node] = []
 
-            for node in container.named_children:
-                if node.type in _TYPE_ITEMS:
-                    name_node = node.child_by_field_name("name")
-                    if name_node is None:
+                for node in current_container.named_children:
+                    if node.type == "attribute_item":
+                        pending_attributes.append(node)
                         continue
-                    name = _identifier(_get_text(name_node))
-                    owner = add_entity(
-                        name=name,
-                        kind=_TYPE_ITEMS[node.type],
-                        module=module,
-                        rel_path=rel_path,
-                        imports=imports,
-                        node=node,
-                        crate=crate,
+
+                    is_cfg_test = any(
+                        _is_cfg_test_attribute(attribute) for attribute in pending_attributes
                     )
-                    direct_entities += 1
-                    if node.type == "trait_item":
-                        bounds = node.child_by_field_name("bounds")
-                        if bounds is not None:
-                            for bound in bounds.named_children:
-                                bound_path = _base_type_path(bound)
-                                if bound_path:
-                                    pending_trait_bounds.append(
-                                        (owner, bound_path, module, crate, imports)
-                                    )
-                        body = node.child_by_field_name("body")
-                        if body is not None:
-                            for member in body.named_children:
-                                if member.type not in {"function_item", "function_signature_item"}:
-                                    continue
-                                method_name = member.child_by_field_name("name")
-                                if method_name is None:
-                                    continue
-                                add_entity(
-                                    name=_identifier(_get_text(method_name)),
-                                    kind="method",
-                                    module=module,
-                                    rel_path=rel_path,
-                                    imports=imports,
-                                    node=member,
-                                    crate=crate,
-                                    owner=owner,
-                                    fqn_override=f"{owner}.{_identifier(_get_text(method_name))}",
-                                )
-                elif node.type == "function_item":
-                    name_node = node.child_by_field_name("name")
-                    if name_node is not None:
-                        add_entity(
-                            name=_identifier(_get_text(name_node)),
-                            kind="function",
-                            module=module,
+                    pending_attributes.clear()
+
+                    if node.type in _TYPE_ITEMS:
+                        name_node = node.child_by_field_name("name")
+                        if name_node is None:
+                            continue
+                        name = _identifier(_get_text(name_node))
+                        owner = add_entity(
+                            name=name,
+                            kind=_TYPE_ITEMS[node.type],
+                            module=current_module,
                             rel_path=rel_path,
                             imports=imports,
                             node=node,
                             crate=crate,
                         )
                         direct_entities += 1
-                elif node.type == "impl_item":
-                    type_node = node.child_by_field_name("type")
-                    trait_node = node.child_by_field_name("trait")
-                    body = node.child_by_field_name("body")
-                    owner_path = _base_type_path(type_node)
-                    if not owner_path or body is None:
-                        continue
-                    methods: list[_PendingMethod] = []
-                    for member in body.named_children:
-                        if member.type != "function_item":
+                        if node.type == "trait_item":
+                            bounds = node.child_by_field_name("bounds")
+                            if bounds is not None:
+                                for bound in bounds.named_children:
+                                    bound_path = _base_type_path(bound)
+                                    if bound_path:
+                                        pending_trait_bounds.append(
+                                            (
+                                                owner,
+                                                bound_path,
+                                                current_module,
+                                                crate,
+                                                imports,
+                                            )
+                                        )
+                            body = node.child_by_field_name("body")
+                            if body is not None:
+                                for member in body.named_children:
+                                    if member.type not in {
+                                        "function_item",
+                                        "function_signature_item",
+                                    }:
+                                        continue
+                                    method_name = member.child_by_field_name("name")
+                                    if method_name is None:
+                                        continue
+                                    normalized_name = _identifier(_get_text(method_name))
+                                    add_entity(
+                                        name=normalized_name,
+                                        kind="method",
+                                        module=current_module,
+                                        rel_path=rel_path,
+                                        imports=imports,
+                                        node=member,
+                                        crate=crate,
+                                        owner=owner,
+                                        fqn_override=f"{owner}.{normalized_name}",
+                                    )
+                    elif node.type == "function_item":
+                        name_node = node.child_by_field_name("name")
+                        if name_node is not None:
+                            add_entity(
+                                name=_identifier(_get_text(name_node)),
+                                kind="function",
+                                module=current_module,
+                                rel_path=rel_path,
+                                imports=imports,
+                                node=node,
+                                crate=crate,
+                            )
+                            direct_entities += 1
+                    elif node.type == "impl_item":
+                        type_node = node.child_by_field_name("type")
+                        trait_node = node.child_by_field_name("trait")
+                        body = node.child_by_field_name("body")
+                        owner_path = _base_type_path(type_node)
+                        if not owner_path or body is None:
                             continue
-                        method_name = member.child_by_field_name("name")
-                        if method_name is None:
-                            continue
-                        name = _identifier(_get_text(method_name))
-                        methods.append(_PendingMethod(name=name, references=_references(member)))
-                    pending_impls.append(
-                        _PendingImpl(
-                            owner_path=owner_path,
-                            trait_path=_base_type_path(trait_node),
-                            generic_parameters=_generic_type_parameters(node),
-                            module=module,
-                            crate=crate,
-                            imports=imports,
-                            rel_path=rel_path,
-                            methods=methods,
+                        methods: list[_PendingMethod] = []
+                        for member in body.named_children:
+                            if member.type != "function_item":
+                                continue
+                            method_name = member.child_by_field_name("name")
+                            if method_name is None:
+                                continue
+                            name = _identifier(_get_text(method_name))
+                            methods.append(
+                                _PendingMethod(
+                                    name=name,
+                                    references=_references(member),
+                                )
+                            )
+                        pending_impls.append(
+                            _PendingImpl(
+                                owner_path=owner_path,
+                                trait_path=_base_type_path(trait_node),
+                                generic_parameters=_generic_type_parameters(node),
+                                module=current_module,
+                                crate=crate,
+                                imports=imports,
+                                rel_path=rel_path,
+                                methods=methods,
+                            )
                         )
-                    )
-                elif node.type == "mod_item":
-                    name_node = node.child_by_field_name("name")
-                    body = node.child_by_field_name("body")
-                    if name_node is not None and body is not None:
-                        child_module = (*module, _identifier(_get_text(name_node)))
-                        visit_container(body, child_module, rel_path, file_stem, crate)
+                    elif node.type == "mod_item" and not is_cfg_test:
+                        name_node = node.child_by_field_name("name")
+                        body = node.child_by_field_name("body")
+                        if name_node is not None and body is not None:
+                            child_module = (
+                                *current_module,
+                                _identifier(_get_text(name_node)),
+                            )
+                            nested_containers.append((body, child_module, False))
 
-            if is_file_root and direct_entities == 0:
-                module_name = ".".join(module)
-                name = module[-1] if module else file_stem
-                fqn = module_name or file_stem
-                add_entity(
-                    name=name,
-                    kind="module",
-                    module=module[:-1] if module else (),
-                    rel_path=rel_path,
-                    imports=imports,
-                    node=container,
-                    crate=crate,
-                    fqn_override=fqn,
-                )
+                container_stack.extend(reversed(nested_containers))
+                if current_is_file_root and direct_entities == 0:
+                    module_name = ".".join(current_module)
+                    name = current_module[-1] if current_module else file_stem
+                    fqn = module_name or file_stem
+                    add_entity(
+                        name=name,
+                        kind="module",
+                        module=current_module[:-1] if current_module else (),
+                        rel_path=rel_path,
+                        imports=imports,
+                        node=current_container,
+                        crate=crate,
+                        fqn_override=fqn,
+                    )
+
+        all_entities: dict[str, Entity] = {}
+        all_packages: dict[str, list[str]] = {}
+        all_entity_refs: dict[str, _References] = {}
+        all_entity_imports: dict[str, list[_Import]] = {}
+        all_entity_crates: dict[str, tuple[str, ...]] = {}
+        all_pending_impls: list[_PendingImpl] = []
+        all_pending_trait_bounds: list[
+            tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...], list[_Import]]
+        ] = []
 
         for source_file in files:
-            source_file = source_file.resolve()
+            # Extract each file transactionally. If a malformed or adversarial
+            # file trips an unexpected parser edge case, discard its partial
+            # state and preserve entities from healthy sibling files.
+            entities = {}
+            packages = {}
+            entity_refs = {}
+            entity_imports = {}
+            entity_crates = {}
+            pending_impls = []
+            pending_trait_bounds = []
             try:
-                source_file.relative_to(root)
+                source_file = source_file.resolve()
+                rel_path = str(source_file.relative_to(root))
                 if source_file.stat().st_size > _MAX_FILE_BYTES:
+                    logger.warning(
+                        "Skipping Rust source larger than %d bytes: %s",
+                        _MAX_FILE_BYTES,
+                        source_file,
+                    )
                     continue
                 tree = parser.parse(source_file.read_bytes())
-            except (OSError, ValueError):
+                source_root, crate = _crate_context(source_file, root, is_workspace)
+                visit_container(
+                    tree.root_node,
+                    _module_name(source_file, source_root, crate),
+                    rel_path,
+                    source_file.stem,
+                    crate,
+                    is_file_root=True,
+                )
+            except Exception as error:
+                logger.warning(
+                    "Skipping Rust source after extraction failure (%s): %s",
+                    type(error).__name__,
+                    source_file,
+                )
                 continue
 
-            rel_path = str(source_file.relative_to(root))
-            source_root, crate = _crate_context(source_file, root, is_workspace)
-            visit_container(
-                tree.root_node,
-                _module_name(source_file, source_root, crate),
-                rel_path,
-                source_file.stem,
-                crate,
-                is_file_root=True,
-            )
+            all_entities.update(entities)
+            all_entity_refs.update(entity_refs)
+            all_entity_imports.update(entity_imports)
+            all_entity_crates.update(entity_crates)
+            all_pending_impls.extend(pending_impls)
+            all_pending_trait_bounds.extend(pending_trait_bounds)
+            for package, fqns in packages.items():
+                package_entities = all_packages.setdefault(package, [])
+                package_entities.extend(fqn for fqn in fqns if fqn not in package_entities)
+
+        entities = all_entities
+        packages = all_packages
+        entity_refs = all_entity_refs
+        entity_imports = all_entity_imports
+        entity_crates = all_entity_crates
+        pending_impls = all_pending_impls
+        pending_trait_bounds = all_pending_trait_bounds
 
         non_member_entities = [e for e in entities.values() if e.kind != "method"]
         by_module_name = {(e.package, e.name): e.fqn for e in non_member_entities}

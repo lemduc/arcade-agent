@@ -62,7 +62,7 @@ Work everywhere agents work.
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1–9, 12, 13, 14, 15, 16a, 17 | Phases 1–2 + TS/JS & Go parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface` |
+| **Done** | 1–9, 12, 13, 14, 15, 16a, 16a2, 16b, 17 | Phases 1–2 + TS/JS, Go, Kotlin & Rust parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface` |
 | **Now** | 10 | Architectural changelog |
-| **Next** | 11, 16b | Component ownership, Rust parser |
+| **Next** | 11 | Component ownership |
 | **Then** | 18–22 | Cross-language tracking, ecosystem breadth |

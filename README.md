@@ -130,9 +130,15 @@ smell burden, or another architectural pressure.
 - TypeScript/JavaScript (full support)
 - Go (full support)
 - Kotlin (structural support via optional `[languages]` extra; import + inheritance graph)
-- Rust (structs, enums, unions, traits, type aliases, functions, methods,
+- Rust (structural support for structs, enums, unions, traits, type aliases, functions, methods,
   imports, qualified references, trait inheritance/implementations, and Cargo
-  workspaces)
+  workspaces). Inline `#[cfg(test)]` modules are excluded from production graphs;
+  files larger than 1 MB are skipped with a warning.
+
+Tree-sitter parser changes follow the
+[adversarial hardening workflow](.github/skills/harden-tree-sitter-parsers/SKILL.md).
+Recurring parser failure classes are recorded in the
+[living bug catalog](docs/BUG_CATALOG.md).
 
 ## Example: ARCADE Core
 
@@ -254,17 +260,17 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: lemduc/arcade-agent/actions/analyze@v0.1.1
+      - uses: lemduc/arcade-agent/actions/analyze@v0.2.0
         with:
-          arcade-agent-version: "0.1.1"
+          arcade-agent-version: "0.2.0"
 ```
 
 Common optional inputs:
 
 ```yaml
-      - uses: lemduc/arcade-agent/actions/analyze@v0.1.1
+      - uses: lemduc/arcade-agent/actions/analyze@v0.2.0
         with:
-          arcade-agent-version: "0.1.1"
+          arcade-agent-version: "0.2.0"
           source-path: "."
           language: ""
           primary-algorithm: pkg
@@ -273,7 +279,7 @@ Common optional inputs:
 ```
 
 For reproducible CI, keep `arcade-agent-version` pinned to a released package
-version such as `"0.1.1"`. Avoid `latest` in shared CI because a new package
+version such as `"0.2.0"`. Avoid `latest` in shared CI because a new package
 release can change analyzer behavior without a workflow review.
 
 The action stores the baseline as a GitHub Actions artifact on
@@ -321,7 +327,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
-| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go, Rust (full); Kotlin (structural) |
+| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin, Rust (structural) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |

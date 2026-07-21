@@ -41,15 +41,41 @@ def cache_key(source_path: str, language: str | None, files: list[str] | None) -
     hasher.update((language or "auto").encode())
 
     if files:
-        file_paths = sorted(files)
+        file_paths = set(files)
     else:
         # Hash all source-like files under root
-        file_paths = sorted(str(f) for f in root.rglob("*") if f.is_file() and f.suffix in {
-            ".java", ".py", ".c", ".cpp", ".h", ".hpp", ".ts", ".tsx", ".js", ".jsx",
-            ".go", ".kt", ".kts", ".rs",
-        })
+        file_paths = {
+            str(f)
+            for f in root.rglob("*")
+            if f.is_file()
+            and f.suffix
+            in {
+                ".java",
+                ".py",
+                ".c",
+                ".cpp",
+                ".h",
+                ".hpp",
+                ".ts",
+                ".tsx",
+                ".js",
+                ".jsx",
+                ".go",
+                ".kt",
+                ".kts",
+                ".rs",
+            }
+        }
 
-    for fp in file_paths:
+    tracks_rust = language in {None, "rust"} or any(
+        Path(file_path).suffix == ".rs" for file_path in file_paths
+    )
+    if tracks_rust:
+        file_paths.update(
+            str(manifest) for manifest in root.rglob("Cargo.toml") if manifest.is_file()
+        )
+
+    for fp in sorted(file_paths):
         p = Path(fp)
         hasher.update(fp.encode())
         if p.exists():

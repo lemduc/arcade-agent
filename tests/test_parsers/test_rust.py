@@ -3,6 +3,7 @@
 import pytest
 
 pytest.importorskip("tree_sitter_rust")
+import arcade_agent.parsers.rust as rust_parser  # noqa: E402
 from arcade_agent.parsers.rust import RustParser  # noqa: E402
 from arcade_agent.tools.ingest import ingest  # noqa: E402
 from arcade_agent.tools.parse import parse  # noqa: E402
@@ -119,6 +120,77 @@ def test_rust_parser_handles_inline_modules_and_empty_input(tmp_path):
     empty = RustParser().parse([], tmp_path)
     assert empty.num_entities == 0
     assert empty.num_edges == 0
+
+
+@pytest.mark.parametrize(
+    "poisoned_source",
+    [
+        "pub type Poison = " + "::".join(["a"] * 1_200 + ["T"]) + ";",
+        "use " + "a::{" * 1_200 + "T" + "}" * 1_200 + ";",
+        "mod nested {" * 1_200 + "pub struct Deep;" + "}" * 1_200,
+        "struct R; trait Marker {} impl Marker for " + "&" * 1_200 + "R {}",
+    ],
+    ids=["qualified-path", "nested-use", "inline-modules", "wrapped-type"],
+)
+def test_rust_parser_handles_deep_ast_without_losing_sibling_files(tmp_path, poisoned_source):
+    """Machine-generated nesting in one file must not abort full analysis."""
+    poisoned = tmp_path / "poisoned.rs"
+    poisoned.write_text(poisoned_source)
+    valid = tmp_path / "valid.rs"
+    valid.write_text("pub struct Survives;\n")
+
+    graph = RustParser().parse([poisoned, valid], tmp_path)
+    assert "valid.Survives" in graph.entities
+
+
+def test_rust_parser_discards_partial_state_when_one_file_fails(tmp_path, monkeypatch):
+    poisoned = tmp_path / "poisoned.rs"
+    poisoned.write_text("pub struct Poisoned;\n")
+    valid = tmp_path / "valid.rs"
+    valid.write_text("pub struct Survives;\n")
+    original_extract_imports = rust_parser._extract_imports
+
+    def fail_for_poisoned_file(container):
+        if b"Poisoned" in container.text:
+            raise RuntimeError("synthetic extraction failure")
+        return original_extract_imports(container)
+
+    monkeypatch.setattr(rust_parser, "_extract_imports", fail_for_poisoned_file)
+    graph = RustParser().parse([poisoned, valid], tmp_path)
+
+    assert "poisoned.Poisoned" not in graph.entities
+    assert "valid.Survives" in graph.entities
+
+
+def test_rust_parser_skips_cfg_test_inline_modules(tmp_path):
+    source = tmp_path / "lib.rs"
+    source.write_text(
+        "pub struct Production;\n"
+        "#[cfg(test)]\n"
+        "mod tests {\n"
+        "    struct Fixture;\n"
+        "    fn helper() {}\n"
+        "}\n"
+        "#[cfg(not(test))]\n"
+        "mod runtime { pub struct Included; }\n"
+    )
+
+    graph = RustParser().parse([source], tmp_path)
+    assert "Production" in graph.entities
+    assert "runtime.Included" in graph.entities
+    assert all(not fqn.startswith("tests") for fqn in graph.entities)
+
+
+def test_rust_parser_tolerates_invalid_cargo_manifest_encoding(tmp_path):
+    (tmp_path / "Cargo.toml").write_bytes(b"\xff\xfe")
+    source = tmp_path / "lib.rs"
+    source.write_text("pub struct StillParsed;\n")
+
+    repo = ingest(str(tmp_path), language="rust")
+    graph = RustParser().parse([source], tmp_path)
+
+    assert repo.source_files == [source]
+    assert "StillParsed" in graph.entities
 
 
 def test_rust_parser_handles_ripgrep_impl_owner_regressions(tmp_path):

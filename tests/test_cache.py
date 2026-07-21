@@ -69,6 +69,22 @@ def test_cache_key_tracks_rust_source_files(tmp_project):
     assert k1 != k2
 
 
+def test_cache_key_tracks_cargo_manifests_with_explicit_rust_files(tmp_project):
+    rust_file = tmp_project / "src" / "lib.rs"
+    rust_file.write_text("pub struct App;")
+    manifest = tmp_project / "Cargo.toml"
+    manifest.write_text('[package]\nname = "before"\n')
+    files = [str(rust_file)]
+    k1 = cache_key(str(tmp_project), "rust", files)
+
+    manifest.write_text('[package]\nname = "after"\n')
+    newer = manifest.stat().st_mtime + 2
+    os.utime(manifest, (newer, newer))
+    k2 = cache_key(str(tmp_project), "rust", files)
+
+    assert k1 != k2
+
+
 def test_cache_miss_returns_none(tmp_project):
     result = get_cached_graph(str(tmp_project), "nonexistent_key")
     assert result is None

@@ -112,9 +112,11 @@ def _detect_source_root(path: Path, language: str | None = None) -> Path:
     if language == "rust":
         manifest = path / "Cargo.toml"
         try:
-            if manifest.is_file() and "workspace" in tomllib.loads(manifest.read_text()):
-                return path
-        except (OSError, tomllib.TOMLDecodeError):
+            if manifest.is_file():
+                with manifest.open("rb") as manifest_file:
+                    if "workspace" in tomllib.load(manifest_file):
+                        return path
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
             pass
 
     for candidate in _SOURCE_ROOTS:
