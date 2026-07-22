@@ -70,6 +70,26 @@ def _metric_lookup(metrics: list[MetricResult]) -> dict[str, float]:
     return {metric.name: metric.value for metric in metrics}
 
 
+def _normalized_turbo_mq(metrics: list[MetricResult]) -> float:
+    """Return TurboMQ scaled to [0, 1].
+
+    TurboMQ is the raw sum of cluster factors and can reach k for k components,
+    so derived scores must use its normalized form to stay comparable with the
+    other [0, 1] signals.
+    """
+    for metric in metrics:
+        if metric.name != "TurboMQ":
+            continue
+        normalized = metric.details.get("normalized")
+        if isinstance(normalized, int | float):
+            return float(normalized)
+        num_components = metric.details.get("num_components") or 0
+        if isinstance(num_components, int) and num_components > 0:
+            return metric.value / num_components
+        return metric.value
+    return 0.0
+
+
 def _severity_weight(severity: str) -> float:
     """Weight smell severities for derived score calculations."""
     return {
@@ -225,11 +245,20 @@ def compute_rci(architecture: Architecture, dep_graph: DependencyGraph) -> Metri
 def compute_turbo_mq(architecture: Architecture, dep_graph: DependencyGraph) -> MetricResult:
     """Compute TurboMQ (Modularization Quality).
 
-    TurboMQ = sum of cluster factors CF(i) for each component i.
+    TurboMQ = sum of cluster factors CF(i) for each component i, per
+    Mitchell & Mancoridis (Bunch). The value is therefore in [0, k] for k
+    components and is *not* normalized -- ``BasicMQ`` is the normalized (mean)
+    variant of the same family, so the two metrics carry different signals.
+
     CF(i) = 2 * mu_i / (2 * mu_i + sum_j(epsilon_ij + epsilon_ji))
     where mu_i = intra-edges, epsilon_ij = inter-edges from i to j.
 
     Higher is better.
+
+    Returns:
+        MetricResult whose ``value`` is the raw sum of cluster factors and whose
+        ``details`` carry the per-component factors plus ``normalized``
+        (sum / k) for consumers that need a [0, 1] score.
     """
     membership = _build_membership(architecture)
     intra, inter = _count_edges(dep_graph, membership)
@@ -261,8 +290,13 @@ def compute_turbo_mq(architecture: Architecture, dep_graph: DependencyGraph) -> 
 
     return MetricResult(
         name="TurboMQ",
-        value=round(normalized, 4),
-        details={"cluster_factors": cf_details, "raw_sum": round(turbo_mq, 4)},
+        value=round(turbo_mq, 4),
+        details={
+            "cluster_factors": cf_details,
+            "num_components": num_components,
+            "raw_sum": round(turbo_mq, 4),
+            "normalized": round(normalized, 4),
+        },
     )
 
 
@@ -271,6 +305,12 @@ def compute_basic_mq(architecture: Architecture, dep_graph: DependencyGraph) -> 
 
     BasicMQ = (1/k) * sum_i(intra_i / (intra_i + 0.5*inter_i))
     where k = number of components, inter_i = inter-edges touching component i.
+
+    This is the normalized member of the MQ family: its per-component term is
+    algebraically the same cluster factor TurboMQ sums, so BasicMQ equals
+    ``TurboMQ / k`` (reported as ``TurboMQ.details["normalized"]``). Use BasicMQ
+    to compare architectures with different component counts and TurboMQ when
+    the raw Bunch objective value is wanted.
 
     Higher is better.
     """
@@ -508,7 +548,7 @@ def compute_balanced_scores(
         for name in PRINCIPLE_SIGNAL_WEIGHTS
     ))
     cohesion_family = _clamp(
-        0.40 * metric_map.get("TurboMQ", 0.0)
+        0.40 * _normalized_turbo_mq(metrics)
         + 0.35 * metric_map.get("RCI", 0.0)
         + 0.25 * metric_map.get("BasicMQ", 0.0)
     )

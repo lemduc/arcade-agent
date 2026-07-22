@@ -23,8 +23,8 @@ This skill is specific to this repository. It uses the existing self-analysis pi
 Treat these as the default optimization direction unless the task says otherwise.
 
 - `RCI`: higher is better.
-- `TurboMQ`: higher is better.
-- `BasicMQ`: higher is better.
+- `TurboMQ`: higher is better. It is the *sum* of per-component cluster factors, so it ranges over `[0, k]` for `k` components — a change in component count moves it on its own. Compare it only at a fixed component count; otherwise use `BasicMQ`.
+- `BasicMQ`: higher is better. Normalized (mean) variant of the same cluster factors, i.e. `TurboMQ / k`, always in `[0, 1]`.
 - `InterConnectivity`: lower is usually better.
 - `TwoWayPairRatio`: lower is better.
 - `Concern Overload` smell count: lower is better.
