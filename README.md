@@ -220,6 +220,22 @@ Agent: call parse(source_path="p1q2r3")
 Use `language="multi"` instead when every detected supported language should
 be parsed automatically.
 
+**Supported polyglot pairs (MVP).** Every requested language is parsed, but
+cross-language edges are only created *within a language family*:
+
+| Family | Languages | Cross-language relinking |
+|--------|-----------|--------------------------|
+| `jvm` | `java`, `kotlin` | Yes — validated pair (shared FQN space, extends/implements across languages) |
+| every other language | `python`, `go`, `typescript`, `c`, ... | No — parsed and merged into one graph, but never linked to another family |
+
+The relink heuristics are dotted-name tuned (packages, unique leaf names,
+`import a.b.C`) and only the JVM pair is covered by tests, so a Python
+`com.auth.service` module and a Java `com.auth.service` class are never
+confused for each other. When such an FQN coincidence happens across families
+both entities are kept — the later one re-keyed as `<fqn>#<language>` — and the
+counts appear in the graph's `metadata` (`fqn_collisions`,
+`fqn_collisions_cross_family`, …), so nothing is silently dropped.
+
 ## LLM-Powered Analysis
 
 Pass `--use-llm` to enable Claude-powered concern detection. Requires the `claude` CLI installed and authenticated.
@@ -332,7 +348,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
-| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural); polyglot merge+relink via `languages=[...]` / `language="multi"` |
+| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural); polyglot merge+relink via `languages=[...]` / `language="multi"` (cross-language edges within the JVM family only) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |

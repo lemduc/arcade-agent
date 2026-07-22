@@ -79,6 +79,11 @@ def _make_summary(obj: Any, label: str) -> dict:
         langs = getattr(obj, "languages")
         if langs:
             summary["languages"] = list(langs)
+    metadata = getattr(obj, "metadata", None) if hasattr(obj, "num_entities") else None
+    if isinstance(metadata, dict) and metadata:
+        # Agents never see log lines; surface parse notes such as polyglot
+        # FQN-collision counts directly in the summary.
+        summary["metadata"] = metadata
     if hasattr(obj, "name") and isinstance(getattr(obj, "name", None), str):
         summary["name"] = obj.name
     if hasattr(obj, "version"):
@@ -165,7 +170,10 @@ def _build_server():  # type: ignore[no-untyped-def]
             "For example: call 'ingest' and pass its session_id as source_path to "
             "'parse', then pass the parse session_id as dep_graph to 'recover'. "
             "For polyglot repositories, pass languages such as ['java', 'kotlin'] "
-            "to ingest; parse inherits that selection from the ingest session."
+            "to ingest; parse inherits that selection from the ingest session. "
+            "Cross-language edges are only linked within a language family "
+            "(java+kotlin today); other language pairs are parsed and merged "
+            "but never linked to each other."
         ),
     )
 
@@ -225,6 +233,12 @@ def _build_server():  # type: ignore[no-untyped-def]
 
         Returns a session_id referencing the parsed DependencyGraph. Pass this
         session_id as the dep_graph argument to recover, detect_smells, etc.
+
+        Cross-language relinking is family-scoped: java+kotlin is the supported
+        (and validated) pair. Any other combination is parsed and merged into
+        one graph without edges between the two languages. FQN collisions
+        across families keep both entities (the later one re-keyed as
+        "<fqn>#<language>") and are counted in the summary's metadata.
 
         Args:
             source_path: Root directory of the project, or a session ID returned by

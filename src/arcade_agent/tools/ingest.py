@@ -49,10 +49,11 @@ for lang, exts in _LANG_EXTENSIONS.items():
     for ext in exts:
         _EXT_TO_LANG[ext] = lang
 
+# Per-language source roots. Only languages with a parser belong here; generic
+# roots (including src/main/scala) are still probed via _SOURCE_ROOTS.
 _LANG_PREFERRED_ROOTS: dict[str, str] = {
     "java": "src/main/java",
     "kotlin": "src/main/kotlin",
-    "scala": "src/main/scala",
 }
 
 # Well-known source root directories (tried in order)

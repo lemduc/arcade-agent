@@ -1,6 +1,7 @@
 """Dependency graph data models."""
 
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -35,6 +36,9 @@ class DependencyGraph:
     entities: dict[str, Entity] = field(default_factory=dict)
     edges: list[Edge] = field(default_factory=list)
     packages: dict[str, list[str]] = field(default_factory=dict)
+    # Parse-time notes for consumers (e.g. cross-language FQN collision counts
+    # from multilang.merge_and_relink). Empty for single-language parses.
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def num_entities(self) -> int:
@@ -66,4 +70,9 @@ class DependencyGraph:
         for pkg, fqns in other.packages.items():
             packages.setdefault(pkg, []).extend(fqns)
         packages = {pkg: list(dict.fromkeys(fqns)) for pkg, fqns in packages.items()}
-        return DependencyGraph(entities=entities, edges=edges, packages=packages)
+        return DependencyGraph(
+            entities=entities,
+            edges=edges,
+            packages=packages,
+            metadata={**self.metadata, **other.metadata},
+        )

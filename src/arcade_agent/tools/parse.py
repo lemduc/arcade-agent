@@ -33,9 +33,13 @@ def _resolve_languages(
     if languages is not None:
         if not languages:
             raise ValueError("languages must be non-empty")
-        return list(languages)
+        # Sorted + de-duplicated so ["kotlin", "java"] and ["java", "kotlin"]
+        # produce the same graph (merge order decides collision winners).
+        return sorted(dict.fromkeys(languages))
     if language == "multi":
-        discover = file_paths if file_paths is not None else list(root.rglob("*"))
+        discover = file_paths if file_paths is not None else [
+            f for f in root.rglob("*") if f.is_file()
+        ]
         detected_languages = detect_languages_from_files(discover)
         if not detected_languages:
             raise ValueError(f"Could not detect languages in {root}")
@@ -112,17 +116,28 @@ def parse(
 ) -> DependencyGraph:
     """Parse source code and extract a dependency graph.
 
+    Polyglot support (MVP): every requested language is parsed, but
+    cross-language edges are only linked *within a language family* — currently
+    just the JVM family (``java`` + ``kotlin``), the one validated pair. Other
+    languages each form their own family, so a Python and a Java graph are
+    unioned without inventing edges between them (see
+    ``arcade_agent.parsers.multilang``). Cross-family FQN collisions are kept
+    (re-keyed as ``<fqn>#<language>``) and counted in ``graph.metadata``.
+
     Args:
         source_path: Root directory of the project.
         language: Language to parse (java, python, etc.), or "multi" to parse
             every detected language and merge+relink cross-language edges.
         languages: Explicit language list for polyglot parse
-            (e.g. ["java", "kotlin"]). Mutually exclusive with *language*.
-        files: Specific files to parse. If None, discovers all files.
+            (e.g. ["java", "kotlin"]). Sorted internally, so ordering does not
+            change the result. Mutually exclusive with *language*.
+        files: Specific files to parse. If None, discovers all files. Files not
+            matching any resolved language are skipped (with a warning).
         use_cache: If True, return cached results when source files haven't changed.
 
     Returns:
-        DependencyGraph with entities, edges, and package info.
+        DependencyGraph with entities, edges, package info and, for polyglot
+        parses, FQN-collision counts in ``metadata``.
     """
     root = Path(source_path)
     provided_files = [Path(f) for f in files] if files else None
@@ -143,12 +158,25 @@ def parse(
     else:
         file_paths = _discover_files(root, resolved)
 
+    per_language = {lang: _files_for_language(file_paths, lang) for lang in resolved}
+    selected = {f for files_ in per_language.values() for f in files_}
+    dropped = [f for f in file_paths if f not in selected]
+    if dropped:
+        # Same filtering rule for one or many languages: a file whose extension
+        # no resolved parser claims is not parseable and is reported, not
+        # silently handed to an arbitrary parser.
+        logger.warning(
+            "Skipping %d file(s) not matching languages %s (e.g. %s)",
+            len(dropped),
+            ",".join(resolved),
+            dropped[0],
+        )
+
     if len(resolved) == 1:
-        graph = _parse_one(resolved[0], file_paths, root, use_cache)
+        graph = _parse_one(resolved[0], per_language[resolved[0]], root, use_cache)
     else:
         graphs = [
-            _parse_one(lang, _files_for_language(file_paths, lang), root, use_cache)
-            for lang in resolved
+            _parse_one(lang, per_language[lang], root, use_cache) for lang in resolved
         ]
         graphs = [g for g in graphs if g.num_entities or g.num_edges]
         graph = merge_and_relink(*graphs) if graphs else DependencyGraph()

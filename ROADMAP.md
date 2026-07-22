@@ -45,7 +45,7 @@ Handle real-world polyglot monorepos.
 - [x] **16a2. Kotlin parser** — Shipped (`parsers/kotlin.py`) for JVM/Kotlin-first repos (e.g. embabel-agent).
 - [ ] **16b. Rust parser** — Still open. High-demand language for agent-assisted development.
 - [x] **17. Incremental parsing** — Content-hash extract cache shipped in #9 (`incremental.py`), wired for the Python parser only; extending to the other two-pass parsers is follow-up.
-- [x] **18. Cross-language dependency tracking** — MVP: multi-language ingest/parse (`languages=[...]` / `language="multi"`) merges per-language graphs and relinks import/extends/implements across FQN space (Java↔Kotlin first; same mechanism for other same-FQN or import-linked pairs). Broader RPC/IDL bridges (gRPC stubs, OpenAPI) remain follow-up.
+- [x] **18. Cross-language dependency tracking** — MVP: multi-language ingest/parse (`languages=[...]` / `language="multi"`) merges per-language graphs and relinks import/extends/implements across FQN space. Relinking is **family-scoped**: the `jvm` family (Java↔Kotlin) is the supported and validated pair; every other language is its own family and is merged without cross-language edges. Extending relinking to further families (and broader RPC/IDL bridges — gRPC stubs, OpenAPI) remains follow-up.
 
 ## Phase 6 — Agent Protocol Integration
 
