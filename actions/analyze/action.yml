@@ -5,7 +5,7 @@ inputs:
   arcade-agent-version:
     description: Released arcade-agent package version to install.
     required: false
-    default: "0.1.1"
+    default: "0.2.0"
   python-version:
     description: Python version used for analysis.
     required: false
@@ -23,7 +23,7 @@ inputs:
     required: false
     default: "."
   language:
-    description: Optional language override (java, python, typescript, c, go, kotlin).
+    description: Optional language override (java, python, typescript, c, go, kotlin, rust).
     required: false
     default: ""
   repo-name:

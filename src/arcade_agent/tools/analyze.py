@@ -88,6 +88,7 @@ def _run_sync_pipeline(
             language=repository.language or language,
             files=[str(path) for path in repository.source_files],
             use_cache=use_cache,
+            exclude_tests=exclude_tests,
         )
         if on_stage is not None:
             on_stage("graph", graph)

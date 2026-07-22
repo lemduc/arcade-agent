@@ -100,7 +100,7 @@ def main() -> None:
     parser.add_argument(
         "--language",
         default="",
-        help="Optional language override (java, python, typescript, c, go, kotlin)",
+        help="Optional language override (java, python, typescript, c, go, kotlin, rust)",
     )
     parser.add_argument(
         "--repo-name",

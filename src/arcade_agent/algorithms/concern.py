@@ -15,13 +15,17 @@ from arcade_agent.parsers.graph import DependencyGraph
 
 log = logging.getLogger(__name__)
 
+CONCERN_OVERLOAD_ENTITY_THRESHOLD = 20
+CONCERN_OVERLOAD_HIGH_ENTITY_THRESHOLD = 40
+CONCERN_OVERLOAD_MIN_INTERNAL_EDGES_PER_ENTITY = 0.4
+
 
 def detect_concern_overload(
     architecture: Architecture,
     dep_graph: DependencyGraph,
-    threshold: int = 20,
-    high_threshold: int = 40,
-    min_internal_edges_per_entity: float = 0.4,
+    threshold: int = CONCERN_OVERLOAD_ENTITY_THRESHOLD,
+    high_threshold: int = CONCERN_OVERLOAD_HIGH_ENTITY_THRESHOLD,
+    min_internal_edges_per_entity: float = CONCERN_OVERLOAD_MIN_INTERNAL_EDGES_PER_ENTITY,
 ) -> list[dict]:
     """Detect components with too many responsibilities.
 

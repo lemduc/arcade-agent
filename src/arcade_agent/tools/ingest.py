@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,6 +41,7 @@ _LANG_EXTENSIONS: dict[str, list[str]] = {
     "c": [".c", ".h", ".cpp", ".hpp", ".cc", ".cxx"],
     "go": [".go"],
     "kotlin": [".kt", ".kts"],
+    "rust": [".rs"],
 }
 
 # Reverse mapping
@@ -105,6 +107,18 @@ def _detect_source_root(path: Path, language: str | None = None) -> Path:
     Checks for well-known source root patterns (e.g., src/main/java for Maven).
     Falls back to the project root.
     """
+    # A Cargo workspace may contain a root crate plus multiple member crates.
+    # Narrowing it to the first ``src`` directory would silently drop members.
+    if language == "rust":
+        manifest = path / "Cargo.toml"
+        try:
+            if manifest.is_file():
+                with manifest.open("rb") as manifest_file:
+                    if "workspace" in tomllib.load(manifest_file):
+                        return path
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+            pass
+
     for candidate in _SOURCE_ROOTS:
         root = path / candidate
         if root.is_dir():
@@ -204,7 +218,7 @@ def ingest(
 
     Args:
         source: Git repo URL or local directory path.
-        language: Override language detection (java, python, typescript, c, go, kotlin).
+        language: Override language detection (java, python, typescript, c, go, kotlin, rust).
         work_dir: Directory to clone into. Uses temp dir if None.
         exclude_tests: Exclude test/vendor/build directories (default: True).
         source_root: Override source root (e.g., 'src/main/java'). Auto-detected if None.
