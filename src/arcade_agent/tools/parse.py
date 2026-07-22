@@ -23,6 +23,7 @@ def parse(
     language: str | None = None,
     files: list[str] | None = None,
     use_cache: bool = True,
+    exclude_tests: bool = True,
 ) -> DependencyGraph:
     """Parse source code and extract a dependency graph.
 
@@ -31,6 +32,9 @@ def parse(
         language: Language to parse (java, python, etc.). Auto-detected if None.
         files: Specific files to parse. If None, discovers all files.
         use_cache: If True, return cached results when source files haven't changed.
+        exclude_tests: If True, parsers that recognize inline test constructs
+            (e.g. Rust's ``#[cfg(test)] mod tests``) leave them out of the graph.
+            Mirrors the `ingest` flag, which only excludes whole test *paths*.
 
     Returns:
         DependencyGraph with entities, edges, and package info.
@@ -39,7 +43,7 @@ def parse(
 
     # Check cache before doing expensive parsing
     if use_cache:
-        key = cache_key(source_path, language, files)
+        key = cache_key(source_path, language, files, exclude_tests)
         cached = get_cached_graph(source_path, key)
         if cached is not None:
             return cached
@@ -70,6 +74,7 @@ def parse(
         raise ValueError("No language specified and auto-detection failed")
 
     parser = get_parser(language)
+    parser.exclude_tests = exclude_tests
 
     # Two cache layers: the whole-graph cache above returns instantly when NOTHING
     # changed; when some files changed we fall here and parse incrementally —
@@ -84,7 +89,7 @@ def parse(
 
     # Store in cache for next time
     if use_cache:
-        key = cache_key(source_path, language, files)
+        key = cache_key(source_path, language, files, exclude_tests)
         put_cached_graph(source_path, key, graph)
 
     return graph

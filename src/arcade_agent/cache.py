@@ -20,7 +20,12 @@ def _cache_dir(project_root: Path) -> Path:
     return project_root / _CACHE_DIR
 
 
-def cache_key(source_path: str, language: str | None, files: list[str] | None) -> str:
+def cache_key(
+    source_path: str,
+    language: str | None,
+    files: list[str] | None,
+    exclude_tests: bool = True,
+) -> str:
     """Compute a cache key from source path, language, and file mtimes.
 
     The key is a SHA-256 hash of the sorted file paths and their modification
@@ -31,6 +36,9 @@ def cache_key(source_path: str, language: str | None, files: list[str] | None) -
         source_path: Root directory of the project.
         language: Language being parsed (or None for auto-detect).
         files: Specific files to parse, or None to discover all.
+        exclude_tests: Whether inline test code is excluded. Parsers that honor
+            it (Rust) produce a different graph for the same files, so it must
+            take part in the key.
 
     Returns:
         A hex digest string usable as a cache filename.
@@ -39,6 +47,7 @@ def cache_key(source_path: str, language: str | None, files: list[str] | None) -
     hasher = hashlib.sha256()
     hasher.update(str(root).encode())
     hasher.update((language or "auto").encode())
+    hasher.update(b"tests:excluded" if exclude_tests else b"tests:included")
 
     if files:
         file_paths = set(files)

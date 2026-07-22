@@ -9,6 +9,18 @@ from arcade_agent.parsers.graph import DependencyGraph
 class LanguageParser(ABC):
     """Abstract base class for language-specific parsers."""
 
+    def __init__(self, exclude_tests: bool = True) -> None:
+        """Create a parser.
+
+        Args:
+            exclude_tests: Whether test code should be kept out of the graph.
+                File-level exclusion happens in ``ingest``; this flag lets a
+                parser additionally drop *inline* test constructs that live in
+                production files (e.g. Rust's ``#[cfg(test)] mod tests``).
+                Parsers for languages without inline tests ignore it.
+        """
+        self.exclude_tests = exclude_tests
+
     @property
     @abstractmethod
     def language(self) -> str:

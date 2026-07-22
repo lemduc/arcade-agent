@@ -6,6 +6,12 @@ enums, unions, traits, type aliases, functions, and methods.  A second pass
 resolves ``use`` declarations, same-module references, qualified paths, and
 trait inheritance/implementations into dependency edges. Cargo workspaces are
 kept intact and each member crate gets a stable graph prefix.
+
+Rust unit tests are conventionally written inline as ``#[cfg(test)] mod tests``
+inside the production file, so path-based test exclusion never sees them. When
+``exclude_tests`` is set (the default), those modules and everything below them
+are left out of the graph; with ``exclude_tests=False`` they are extracted like
+any other module.
 """
 
 from __future__ import annotations
@@ -25,7 +31,6 @@ from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 RUST_LANGUAGE = Language(tsrust.language())
 logger = logging.getLogger(__name__)
 
-_MAX_FILE_BYTES = 1_000_000
 _TYPE_ITEMS = {
     "struct_item": "struct",
     "enum_item": "enum",
@@ -350,7 +355,11 @@ def _deduplicate(edges: list[Edge]) -> list[Edge]:
 
 @register_parser
 class RustParser(LanguageParser):
-    """Rust source code parser using tree-sitter."""
+    """Rust source code parser using tree-sitter.
+
+    Honors ``exclude_tests`` (default ``True``) by skipping inline
+    ``#[cfg(test)]`` modules, which path-based test exclusion cannot reach.
+    """
 
     @property
     def language(self) -> str:
@@ -538,7 +547,13 @@ class RustParser(LanguageParser):
                                 methods=methods,
                             )
                         )
-                    elif node.type == "mod_item" and not is_cfg_test:
+                    elif node.type == "mod_item":
+                        # Rust unit tests live inline, so path-based test
+                        # exclusion in ``ingest`` cannot see them. Drop
+                        # ``#[cfg(test)]`` modules only when the caller asked
+                        # for test code to be excluded.
+                        if is_cfg_test and self.exclude_tests:
+                            continue
                         name_node = node.child_by_field_name("name")
                         body = node.child_by_field_name("body")
                         if name_node is not None and body is not None:
@@ -588,13 +603,6 @@ class RustParser(LanguageParser):
             try:
                 source_file = source_file.resolve()
                 rel_path = str(source_file.relative_to(root))
-                if source_file.stat().st_size > _MAX_FILE_BYTES:
-                    logger.warning(
-                        "Skipping Rust source larger than %d bytes: %s",
-                        _MAX_FILE_BYTES,
-                        source_file,
-                    )
-                    continue
                 tree = parser.parse(source_file.read_bytes())
                 source_root, crate = _crate_context(source_file, root, is_workspace)
                 visit_container(

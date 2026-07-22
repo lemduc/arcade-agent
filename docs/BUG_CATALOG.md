@@ -14,6 +14,9 @@ prevention rules so the same defect is not rediscovered language by language.
 - Test nesting deeper than `sys.getrecursionlimit()` for every traversal shape.
 - Pair each poisoned input with a healthy sibling file and assert the sibling survives.
 - Track non-source inputs such as manifests when they affect graph identity or cache keys.
+- Do not add per-parser input caps (file size, node counts) as a stand-in for robustness:
+  they drop real code silently, diverge from the other parsers, and never fix the
+  traversal defect they appear to mitigate. The per-file exception boundary is the backstop.
 - Run focused tests, the full suite, a large real repository, and arcade-agent's own
   self-analysis before publishing parser changes.
 

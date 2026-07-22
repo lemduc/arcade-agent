@@ -85,6 +85,13 @@ def test_cache_key_tracks_cargo_manifests_with_explicit_rust_files(tmp_project):
     assert k1 != k2
 
 
+def test_cache_key_changes_with_exclude_tests(tmp_project):
+    """Rust graphs differ by exclude_tests, so cached graphs must not collide."""
+    k1 = cache_key(str(tmp_project), "rust", None)
+    k2 = cache_key(str(tmp_project), "rust", None, exclude_tests=False)
+    assert k1 != k2
+
+
 def test_cache_miss_returns_none(tmp_project):
     result = get_cached_graph(str(tmp_project), "nonexistent_key")
     assert result is None

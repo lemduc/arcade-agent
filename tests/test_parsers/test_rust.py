@@ -129,8 +129,19 @@ def test_rust_parser_handles_inline_modules_and_empty_input(tmp_path):
         "use " + "a::{" * 1_200 + "T" + "}" * 1_200 + ";",
         "mod nested {" * 1_200 + "pub struct Deep;" + "}" * 1_200,
         "struct R; trait Marker {} impl Marker for " + "&" * 1_200 + "R {}",
+        "struct R; trait Marker {} impl Marker for "
+        + "(" * 1_200
+        + "R"
+        + ")" * 1_200
+        + " {}",
     ],
-    ids=["qualified-path", "nested-use", "inline-modules", "wrapped-type"],
+    ids=[
+        "qualified-path",
+        "nested-use",
+        "inline-modules",
+        "wrapped-type",
+        "parenthesized-type",
+    ],
 )
 def test_rust_parser_handles_deep_ast_without_losing_sibling_files(tmp_path, poisoned_source):
     """Machine-generated nesting in one file must not abort full analysis."""
@@ -162,23 +173,84 @@ def test_rust_parser_discards_partial_state_when_one_file_fails(tmp_path, monkey
     assert "valid.Survives" in graph.entities
 
 
+_CFG_TEST_SOURCE = (
+    "pub struct Production;\n"
+    "#[cfg(test)]\n"
+    "mod tests {\n"
+    "    struct Fixture;\n"
+    "    fn helper() {}\n"
+    "}\n"
+    "#[cfg(not(test))]\n"
+    "mod runtime { pub struct Included; }\n"
+)
+
+
 def test_rust_parser_skips_cfg_test_inline_modules(tmp_path):
     source = tmp_path / "lib.rs"
-    source.write_text(
-        "pub struct Production;\n"
-        "#[cfg(test)]\n"
-        "mod tests {\n"
-        "    struct Fixture;\n"
-        "    fn helper() {}\n"
-        "}\n"
-        "#[cfg(not(test))]\n"
-        "mod runtime { pub struct Included; }\n"
-    )
+    source.write_text(_CFG_TEST_SOURCE)
 
     graph = RustParser().parse([source], tmp_path)
     assert "Production" in graph.entities
     assert "runtime.Included" in graph.entities
     assert all(not fqn.startswith("tests") for fqn in graph.entities)
+    assert "tests" not in graph.packages
+
+
+def test_rust_parser_keeps_cfg_test_modules_when_tests_are_not_excluded(tmp_path):
+    source = tmp_path / "lib.rs"
+    source.write_text(_CFG_TEST_SOURCE)
+
+    graph = RustParser(exclude_tests=False).parse([source], tmp_path)
+    assert "Production" in graph.entities
+    assert "runtime.Included" in graph.entities
+    assert "tests.Fixture" in graph.entities
+    assert "tests.helper" in graph.entities
+
+
+def test_rust_parser_skips_nested_items_under_cfg_test_module(tmp_path):
+    """Everything below a #[cfg(test)] module is dropped, not just its head."""
+    source = tmp_path / "lib.rs"
+    source.write_text(
+        "pub struct Production;\n"
+        "#[cfg(test)]\n"
+        "mod tests {\n"
+        "    mod inner {\n"
+        "        pub struct DeepFixture;\n"
+        "    }\n"
+        "    impl super::Production {\n"
+        "        fn only_for_tests(&self) {}\n"
+        "    }\n"
+        "}\n"
+    )
+
+    graph = RustParser().parse([source], tmp_path)
+    assert "Production" in graph.entities
+    assert all("Fixture" not in fqn for fqn in graph.entities)
+    assert "Production.only_for_tests" not in graph.entities
+
+
+def test_parse_tool_threads_exclude_tests_to_the_rust_parser(tmp_path):
+    source = tmp_path / "lib.rs"
+    source.write_text(_CFG_TEST_SOURCE)
+
+    excluded = parse(str(tmp_path), language="rust", use_cache=False)
+    included = parse(str(tmp_path), language="rust", use_cache=False, exclude_tests=False)
+
+    assert "tests.Fixture" not in excluded.entities
+    assert "tests.Fixture" in included.entities
+
+
+def test_rust_parser_does_not_silently_drop_large_files(tmp_path):
+    """No parser caps input size; a >1 MB crate file must still be extracted."""
+    # Bulk is comments so the file crosses 1 MB without a huge entity count.
+    filler = "// {}\n".format("padding " * 12) * 12_000
+    source = tmp_path / "lib.rs"
+    source.write_text(f"pub struct Head;\n{filler}pub struct Tail;\n")
+    assert source.stat().st_size > 1_000_000
+
+    graph = RustParser().parse([source], tmp_path)
+    assert "Head" in graph.entities
+    assert "Tail" in graph.entities
 
 
 def test_rust_parser_tolerates_invalid_cargo_manifest_encoding(tmp_path):

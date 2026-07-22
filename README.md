@@ -132,8 +132,9 @@ smell burden, or another architectural pressure.
 - Kotlin (structural support via optional `[languages]` extra; import + inheritance graph)
 - Rust (structural support for structs, enums, unions, traits, type aliases, functions, methods,
   imports, qualified references, trait inheritance/implementations, and Cargo
-  workspaces). Inline `#[cfg(test)]` modules are excluded from production graphs;
-  files larger than 1 MB are skipped with a warning.
+  workspaces). Rust unit tests live inline, so with `exclude_tests=True` (the
+  default) `#[cfg(test)]` modules are left out of the graph as well; pass
+  `exclude_tests=False` to `ingest`/`parse`/`analyze` to keep them.
 
 Tree-sitter parser changes follow the
 [adversarial hardening workflow](.github/skills/harden-tree-sitter-parsers/SKILL.md).
