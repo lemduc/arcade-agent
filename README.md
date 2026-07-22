@@ -251,17 +251,17 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: lemduc/arcade-agent/actions/analyze@v0.1.1
+      - uses: lemduc/arcade-agent/actions/analyze@v0.2.0
         with:
-          arcade-agent-version: "0.1.1"
+          arcade-agent-version: "0.2.0"
 ```
 
 Common optional inputs:
 
 ```yaml
-      - uses: lemduc/arcade-agent/actions/analyze@v0.1.1
+      - uses: lemduc/arcade-agent/actions/analyze@v0.2.0
         with:
-          arcade-agent-version: "0.1.1"
+          arcade-agent-version: "0.2.0"
           source-path: "."
           language: ""
           primary-algorithm: pkg
@@ -270,7 +270,7 @@ Common optional inputs:
 ```
 
 For reproducible CI, keep `arcade-agent-version` pinned to a released package
-version such as `"0.1.1"`. Avoid `latest` in shared CI because a new package
+version such as `"0.2.0"`. Avoid `latest` in shared CI because a new package
 release can change analyzer behavior without a workflow review.
 
 The action stores the baseline as a GitHub Actions artifact on
