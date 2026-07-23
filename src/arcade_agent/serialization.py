@@ -9,7 +9,9 @@ from arcade_agent.models.architecture import Architecture, Component
 from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 
 
-def save_architecture(arch: Architecture, path: Path) -> None:
+def save_architecture(
+    arch: Architecture, path: Path, metrics: dict[str, float] | None = None
+) -> None:
     """Write an Architecture to a JSON file.
 
     Creates parent directories if they don't exist.
@@ -17,8 +19,10 @@ def save_architecture(arch: Architecture, path: Path) -> None:
     Args:
         arch: The architecture to serialize.
         path: Destination file path.
+        metrics: Optional metric name→value map to persist alongside the
+            architecture (used for baseline drift deltas).
     """
-    data = {
+    data: dict[str, Any] = {
         "algorithm": arch.algorithm,
         "rationale": arch.rationale,
         "metadata": arch.metadata,
@@ -31,18 +35,21 @@ def save_architecture(arch: Architecture, path: Path) -> None:
             for c in arch.components
         ],
     }
+    if metrics:
+        data["metrics"] = metrics
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 
-def load_architecture(path: Path) -> Architecture:
+def load_architecture(path: Path) -> tuple[Architecture, dict[str, float]]:
     """Read an Architecture from a JSON file.
 
     Args:
         path: Path to the baseline JSON file.
 
     Returns:
-        The deserialized Architecture.
+        Tuple of (Architecture, baseline_metrics). The metrics dict is empty
+        when the baseline was created before metric persistence was added.
 
     Raises:
         FileNotFoundError: If the file does not exist.
@@ -56,12 +63,14 @@ def load_architecture(path: Path) -> Architecture:
         )
         for c in data.get("components", [])
     ]
-    return Architecture(
+    arch = Architecture(
         components=components,
         rationale=data.get("rationale", ""),
         algorithm=data.get("algorithm", ""),
         metadata=data.get("metadata", {}),
     )
+    baseline_metrics: dict[str, float] = data.get("metrics", {})
+    return arch, baseline_metrics
 
 
 # ---------------------------------------------------------------------------
