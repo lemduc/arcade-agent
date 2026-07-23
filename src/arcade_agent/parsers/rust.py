@@ -443,10 +443,23 @@ class RustParser(LanguageParser):
                         pending_attributes.append(node)
                         continue
 
+                    # Comments between an attribute and its item must not
+                    # clear the pending attribute list (tree-sitter emits
+                    # line_comment/block_comment as named children).
+                    if node.type in {"line_comment", "block_comment"}:
+                        continue
+
                     is_cfg_test = any(
                         _is_cfg_test_attribute(attribute) for attribute in pending_attributes
                     )
                     pending_attributes.clear()
+
+                    # Rust unit tests live inline, so path-based test
+                    # exclusion in ``ingest`` cannot see them. Drop
+                    # ``#[cfg(test)]`` items only when the caller asked
+                    # for test code to be excluded.
+                    if is_cfg_test and self.exclude_tests:
+                        continue
 
                     if node.type in _TYPE_ITEMS:
                         name_node = node.child_by_field_name("name")
@@ -548,12 +561,6 @@ class RustParser(LanguageParser):
                             )
                         )
                     elif node.type == "mod_item":
-                        # Rust unit tests live inline, so path-based test
-                        # exclusion in ``ingest`` cannot see them. Drop
-                        # ``#[cfg(test)]`` modules only when the caller asked
-                        # for test code to be excluded.
-                        if is_cfg_test and self.exclude_tests:
-                            continue
                         name_node = node.child_by_field_name("name")
                         body = node.child_by_field_name("body")
                         if name_node is not None and body is not None:

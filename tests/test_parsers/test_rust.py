@@ -253,6 +253,62 @@ def test_rust_parser_does_not_silently_drop_large_files(tmp_path):
     assert "Tail" in graph.entities
 
 
+def test_rust_parser_skips_cfg_test_with_comment_between_attribute_and_item(tmp_path):
+    """A comment between #[cfg(test)] and the item must not break exclusion."""
+    source = tmp_path / "lib.rs"
+    source.write_text(
+        "pub struct Production;\n"
+        "#[cfg(test)]\n"
+        "// unit tests for this module\n"
+        "mod tests {\n"
+        "    struct Fixture;\n"
+        "    fn helper() {}\n"
+        "}\n"
+        "#[cfg(test)]\n"
+        "/// Doc comment should also not break exclusion\n"
+        "mod doc_tests {\n"
+        "    struct DocFixture;\n"
+        "}\n"
+    )
+
+    graph = RustParser().parse([source], tmp_path)
+    assert "Production" in graph.entities
+    assert all(not fqn.startswith("tests") for fqn in graph.entities)
+    assert all(not fqn.startswith("doc_tests") for fqn in graph.entities)
+
+
+def test_rust_parser_skips_cfg_test_on_non_mod_items(tmp_path):
+    """#[cfg(test)] on functions, structs, and impls must also be excluded."""
+    source = tmp_path / "lib.rs"
+    source.write_text(
+        "pub struct Production;\n"
+        "#[cfg(test)]\n"
+        "fn test_only_helper() {}\n"
+        "#[cfg(test)]\n"
+        "struct TestFixture { x: u64 }\n"
+        "#[cfg(test)]\n"
+        "impl TestFixture { fn setup(&self) {} }\n"
+        "pub fn real_function() {}\n"
+    )
+
+    graph = RustParser().parse([source], tmp_path)
+    assert "Production" in graph.entities
+    assert "real_function" in graph.entities
+    assert "test_only_helper" not in graph.entities
+    assert all("TestFixture" not in fqn for fqn in graph.entities)
+
+
+def test_rust_parser_handles_large_files_without_cap(tmp_path):
+    """Files larger than 1MB must still be parsed (no silent cap)."""
+    source = tmp_path / "large.rs"
+    # Generate a file > 1MB with valid Rust content
+    padding = "// padding\n" * 100_000  # ~1.1MB of comments
+    source.write_text(padding + "pub struct LargeFile;\n")
+
+    graph = RustParser().parse([source], tmp_path)
+    assert "large.LargeFile" in graph.entities
+
+
 def test_rust_parser_tolerates_invalid_cargo_manifest_encoding(tmp_path):
     (tmp_path / "Cargo.toml").write_bytes(b"\xff\xfe")
     source = tmp_path / "lib.rs"
