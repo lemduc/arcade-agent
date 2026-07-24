@@ -111,6 +111,10 @@ unbalanced component, a dependency hub, or new architecture smells. The derived
 score combines three views:
 
 - **Cohesion family** — existing `RCI`, `TurboMQ`, and `BasicMQ` signals.
+  `TurboMQ` is the Bunch-style *sum* of per-component cluster factors (range
+  `[0, k]` for `k` components); `BasicMQ` is the normalized mean of the same
+  cluster factors (range `[0, 1]`), so the balanced score uses the normalized
+  form of `TurboMQ` internally.
 - **Principle alignment** — acyclic dependencies, layering health,
   responsibility focus, interface segregation, component balance, hub balance,
   boundary clarity, and dependency distribution.
