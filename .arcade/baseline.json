@@ -1,6 +1,6 @@
 {
   "algorithm": "pkg",
-  "rationale": "Package-based grouping (depth=2 after common prefix '') with dependency-affinity facade refinement (255 entities reassigned).",
+  "rationale": "Package-based grouping (depth=2 after common prefix '') with dependency-affinity facade refinement (257 entities reassigned).",
   "metadata": {},
   "components": [
     {
@@ -56,6 +56,7 @@
         "src.arcade_agent.algorithms.coupling._count_edges",
         "src.arcade_agent.algorithms.coupling._gini_coefficient",
         "src.arcade_agent.algorithms.coupling._metric_lookup",
+        "src.arcade_agent.algorithms.coupling._normalized_turbo_mq",
         "src.arcade_agent.algorithms.coupling._round_score",
         "src.arcade_agent.algorithms.coupling._score_drivers",
         "src.arcade_agent.algorithms.coupling._severity_weight",
@@ -370,6 +371,8 @@
         "tests.test_algorithms.test_coupling.test_balanced_scores_drop_when_principle_smells_increase",
         "tests.test_algorithms.test_coupling.test_rci",
         "tests.test_algorithms.test_coupling.test_turbo_mq",
+        "tests.test_algorithms.test_coupling.test_turbo_mq_and_basic_mq_are_not_identical",
+        "tests.test_algorithms.test_coupling.test_turbo_mq_is_the_sum_of_cluster_factors",
         "tests.test_algorithms.test_limbo._make_graph",
         "tests.test_algorithms.test_limbo.test_info_loss_different_vectors",
         "tests.test_algorithms.test_limbo.test_info_loss_formula",
