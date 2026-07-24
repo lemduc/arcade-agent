@@ -75,6 +75,15 @@ def _make_summary(obj: Any, label: str) -> dict:
         summary["num_files"] = len(obj.source_files)
     if hasattr(obj, "language"):
         summary["language"] = obj.language
+    if hasattr(obj, "languages"):
+        langs = getattr(obj, "languages")
+        if langs:
+            summary["languages"] = list(langs)
+    metadata = getattr(obj, "metadata", None) if hasattr(obj, "num_entities") else None
+    if isinstance(metadata, dict) and metadata:
+        # Agents never see log lines; surface parse notes such as polyglot
+        # FQN-collision counts directly in the summary.
+        summary["metadata"] = metadata
     if hasattr(obj, "name") and isinstance(getattr(obj, "name", None), str):
         summary["name"] = obj.name
     if hasattr(obj, "version"):
@@ -101,6 +110,41 @@ def _apply_budget(data: Any, max_tokens: int | None) -> Any:
     return enforce_budget(data, max_tokens)
 
 
+def _resolve_parse_source(
+    source_path: str,
+    language: str | None,
+    languages: list[str] | None,
+    files: list[str] | None,
+) -> tuple[str, str | None, list[str] | None, list[str] | None]:
+    """Resolve an ingest session into the concrete inputs required by parse.
+
+    MCP clients should not need to discover a temporary clone path or repeat the
+    language/file selection already made by ``ingest``. Explicit parse arguments
+    still take precedence when a caller intentionally wants a narrower parse.
+    """
+    if source_path not in _session:
+        return source_path, language, languages, files
+
+    from arcade_agent.tools.ingest import IngestedRepo
+
+    ingested = _session[source_path]["value"]
+    if not isinstance(ingested, IngestedRepo):
+        label = _session[source_path]["label"]
+        raise ValueError(
+            f"source_path session {source_path!r} contains {label}, not IngestedRepo"
+        )
+
+    if language is None and languages is None:
+        if ingested.languages:
+            languages = list(ingested.languages)
+        elif ingested.language:
+            language = ingested.language
+    if files is None:
+        files = [str(path) for path in ingested.source_files]
+
+    return str(ingested.path), language, languages, files
+
+
 def _build_server():  # type: ignore[no-untyped-def]
     """Build and return the FastMCP server instance.
 
@@ -123,8 +167,13 @@ def _build_server():  # type: ignore[no-untyped-def]
             "Use 'analyze' for a one-call end-to-end pipeline (offloaded from the event loop), "
             "or compose individual tools. "
             "Use session IDs from previous tool outputs as inputs to subsequent tools. "
-            "For example: call 'parse' to get a session_id, then pass that session_id "
-            "as dep_graph to 'recover'."
+            "For example: call 'ingest' and pass its session_id as source_path to "
+            "'parse', then pass the parse session_id as dep_graph to 'recover'. "
+            "For polyglot repositories, pass languages such as ['java', 'kotlin'] "
+            "to ingest; parse inherits that selection from the ingest session. "
+            "Cross-language edges are only linked within a language family "
+            "(java+kotlin today); other language pairs are parsed and merged "
+            "but never linked to each other."
         ),
     )
 
@@ -134,6 +183,7 @@ def _build_server():  # type: ignore[no-untyped-def]
     def ingest(
         source: str,
         language: str | None = None,
+        languages: list[str] | None = None,
         work_dir: str | None = None,
         exclude_tests: bool = True,
         source_root: str | None = None,
@@ -146,7 +196,10 @@ def _build_server():  # type: ignore[no-untyped-def]
 
         Args:
             source: Git repo URL or local directory path.
-            language: Override language detection (java, python, c, typescript, go, kotlin).
+            language: Override language detection (java, python, c, typescript,
+                go, kotlin, or "multi" for every detected language).
+            languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).
+                Mutually exclusive with language.
             work_dir: Directory to clone into. Uses temp dir if None.
             exclude_tests: Exclude test/vendor/build directories (default True).
             source_root: Override source root (e.g. 'src/main/java').
@@ -157,6 +210,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         result = _ingest(
             source=source,
             language=language,
+            languages=languages,
             work_dir=work_dir,
             exclude_tests=exclude_tests,
             source_root=source_root,
@@ -170,6 +224,7 @@ def _build_server():  # type: ignore[no-untyped-def]
     def parse(
         source_path: str,
         language: str | None = None,
+        languages: list[str] | None = None,
         files: list[str] | None = None,
         use_cache: bool = True,
         max_tokens: int | None = None,
@@ -179,19 +234,34 @@ def _build_server():  # type: ignore[no-untyped-def]
         Returns a session_id referencing the parsed DependencyGraph. Pass this
         session_id as the dep_graph argument to recover, detect_smells, etc.
 
+        Cross-language relinking is family-scoped: java+kotlin is the supported
+        (and validated) pair. Any other combination is parsed and merged into
+        one graph without edges between the two languages. FQN collisions
+        across families keep both entities (the later one re-keyed as
+        "<fqn>#<language>") and are counted in the summary's metadata.
+
         Args:
-            source_path: Root directory of the project.
-            language: Language to parse (java, python, c, typescript, go, kotlin).
-                Auto-detected if None.
+            source_path: Root directory of the project, or a session ID returned by
+                ingest. An ingest session carries its selected files and languages
+                into this parse call unless explicitly overridden.
+            language: Language to parse (java, python, c, typescript, go, kotlin),
+                or "multi" to parse every detected language and relink
+                cross-language edges.
+            languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).
+                Mutually exclusive with language.
             files: Specific files to parse. Discovers all if None.
             use_cache: Return cached results when source files haven't changed.
             max_tokens: Optional token budget for the response.
         """
         from arcade_agent.tools.parse import parse as _parse
 
+        source_path, language, languages, files = _resolve_parse_source(
+            source_path, language, languages, files
+        )
         graph = _parse(
             source_path=source_path,
             language=language,
+            languages=languages,
             files=files,
             use_cache=use_cache,
         )

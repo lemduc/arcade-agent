@@ -98,8 +98,12 @@ def load_graph(path: Path) -> DependencyGraph:
 
 
 def graph_to_dict(graph: DependencyGraph) -> dict:
-    """Convert a DependencyGraph to a JSON-serializable dict."""
-    return {
+    """Convert a DependencyGraph to a JSON-serializable dict.
+
+    ``metadata`` is emitted only when non-empty so single-language parse output
+    stays byte-identical to previous releases.
+    """
+    data = {
         "entities": {
             fqn: {
                 "fqn": e.fqn,
@@ -121,6 +125,9 @@ def graph_to_dict(graph: DependencyGraph) -> dict:
         ],
         "packages": graph.packages,
     }
+    if graph.metadata:
+        data["metadata"] = graph.metadata
+    return data
 
 
 def dict_to_graph(data: dict) -> DependencyGraph:
@@ -145,7 +152,12 @@ def dict_to_graph(data: dict) -> DependencyGraph:
         for e in data.get("edges", [])
     ]
     packages: dict[str, list[str]] = data.get("packages", {})
-    return DependencyGraph(entities=entities, edges=edges, packages=packages)
+    return DependencyGraph(
+        entities=entities,
+        edges=edges,
+        packages=packages,
+        metadata=data.get("metadata", {}),
+    )
 
 
 def architecture_to_dict(arch: Architecture) -> dict:

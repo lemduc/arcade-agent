@@ -23,7 +23,15 @@ inputs:
     required: false
     default: "."
   language:
-    description: Optional language override (java, python, typescript, c, go, kotlin).
+    description: >
+      Optional language override (java, python, typescript, c, go, kotlin, or multi
+      for every detected language with cross-language edge relinking).
+    required: false
+    default: ""
+  languages:
+    description: >
+      Optional comma-separated polyglot languages (e.g. java,kotlin). Mutually
+      exclusive with language when both would be set by the caller.
     required: false
     default: ""
   repo-name:
@@ -135,12 +143,15 @@ runs:
       env:
         SOURCE_PATH: ${{ inputs.source-path }}
         LANGUAGE: ${{ inputs.language }}
+        LANGUAGES: ${{ inputs.languages }}
         REPO_NAME: ${{ inputs.repo-name }}
         PRIMARY_ALGORITHM: ${{ inputs.primary-algorithm }}
         FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
       run: |
         ARGS=(--source "${SOURCE_PATH}")
-        if [ -n "${LANGUAGE}" ]; then
+        if [ -n "${LANGUAGES}" ]; then
+          ARGS+=(--languages "${LANGUAGES}")
+        elif [ -n "${LANGUAGE}" ]; then
           ARGS+=(--language "${LANGUAGE}")
         fi
         if [ -n "${REPO_NAME}" ]; then
@@ -161,12 +172,15 @@ runs:
       env:
         SOURCE_PATH: ${{ inputs.source-path }}
         LANGUAGE: ${{ inputs.language }}
+        LANGUAGES: ${{ inputs.languages }}
         REPO_NAME: ${{ inputs.repo-name }}
         WCA_NUM_CLUSTERS: ${{ inputs.wca-num-clusters }}
         FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
       run: |
         ARGS=(--source "${SOURCE_PATH}")
-        if [ -n "${LANGUAGE}" ]; then
+        if [ -n "${LANGUAGES}" ]; then
+          ARGS+=(--languages "${LANGUAGES}")
+        elif [ -n "${LANGUAGE}" ]; then
           ARGS+=(--language "${LANGUAGE}")
         fi
         if [ -n "${REPO_NAME}" ]; then

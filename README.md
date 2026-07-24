@@ -20,8 +20,8 @@ Provides composable tools for parsing source code, recovering architecture, dete
 ```bash
 pip install -e ".[dev]"
 
-# With MCP server support (for AI agent integration)
-pip install -e ".[mcp,dev]"
+# With MCP and all optional language parsers (for polyglot AI agent integration)
+pip install -e ".[mcp,languages,dev]"
 ```
 
 ## Quick Start
@@ -210,6 +210,36 @@ Agent: call get_full_result(session_id="a1b2c3", max_tokens=2000)
        → full graph data, truncated to fit token budget
 ```
 
+For a polyglot repository, let `ingest` preserve its file selection and pass
+the returned session directly to `parse`:
+
+```
+Agent: call ingest(source="/path/to/project", languages=["java", "kotlin"])
+       → {session_id: "p1q2r3", languages: ["java", "kotlin"], ...}
+
+Agent: call parse(source_path="p1q2r3")
+       → {session_id: "a1b2c3", num_entities: 420, num_edges: 960, ...}
+```
+
+Use `language="multi"` instead when every detected supported language should
+be parsed automatically.
+
+**Supported polyglot pairs (MVP).** Every requested language is parsed, but
+cross-language edges are only created *within a language family*:
+
+| Family | Languages | Cross-language relinking |
+|--------|-----------|--------------------------|
+| `jvm` | `java`, `kotlin` | Yes — validated pair (shared FQN space, extends/implements across languages) |
+| every other language | `python`, `go`, `typescript`, `c`, ... | No — parsed and merged into one graph, but never linked to another family |
+
+The relink heuristics are dotted-name tuned (packages, unique leaf names,
+`import a.b.C`) and only the JVM pair is covered by tests, so a Python
+`com.auth.service` module and a Java `com.auth.service` class are never
+confused for each other. When such an FQN coincidence happens across families
+both entities are kept — the later one re-keyed as `<fqn>#<language>` — and the
+counts appear in the graph's `metadata` (`fqn_collisions`,
+`fqn_collisions_cross_family`, …), so nothing is silently dropped.
+
 ## LLM-Powered Analysis
 
 Pass `--use-llm` to enable Claude-powered concern detection. Requires the `claude` CLI installed and authenticated.
@@ -322,7 +352,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
-| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural) |
+| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural); polyglot merge+relink via `languages=[...]` / `language="multi"` (cross-language edges within the JVM family only) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |
