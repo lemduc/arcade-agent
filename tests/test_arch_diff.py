@@ -227,7 +227,7 @@ def test_update_baseline(sample_arch, tmp_path):
     baseline_path = tmp_path / ".arcade" / "baseline.json"
     save_architecture(sample_arch, baseline_path)
 
-    loaded = load_architecture(baseline_path)
+    loaded, _ = load_architecture(baseline_path)
     assert len(loaded.components) == 2
     assert loaded.algorithm == "pkg"
 
@@ -251,6 +251,8 @@ def test_main_update_baseline(tmp_path, monkeypatch):
     ])
 
     assert baseline_path.exists()
-    loaded = load_architecture(baseline_path)
+    loaded, bl_metrics = load_architecture(baseline_path)
     assert loaded.algorithm == "pkg"
     assert len(loaded.components) >= 1
+    # Metrics are persisted for future drift deltas
+    assert "RCI" in bl_metrics
