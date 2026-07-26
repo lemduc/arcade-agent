@@ -1,6 +1,6 @@
 {
   "algorithm": "pkg",
-  "rationale": "Package-based grouping (depth=2 after common prefix '') with dependency-affinity facade refinement (295 entities reassigned).",
+  "rationale": "Package-based grouping (depth=2 after common prefix '') with dependency-affinity facade refinement (296 entities reassigned).",
   "metadata": {},
   "components": [
     {
@@ -98,7 +98,9 @@
         "src.arcade_agent.cache.invalidate_cache",
         "src.arcade_agent.cache.put_cached_graph",
         "src.arcade_agent.ci.arch_diff._delta",
+        "src.arcade_agent.ci.arch_diff._direction_icon",
         "src.arcade_agent.ci.arch_diff._display_value",
+        "src.arcade_agent.ci.arch_diff._metric_row",
         "src.arcade_agent.ci.arch_diff.build_report",
         "src.arcade_agent.ci.arch_diff.main",
         "src.arcade_agent.ci.compare_baseline._all_metric_values",
@@ -595,6 +597,7 @@
         "tests.test_serialization.test_roundtrip_preserves_metadata",
         "tests.test_serialization.test_save_creates_directory",
         "tests.test_serialization.test_save_load_roundtrip",
+        "tests.test_serialization.test_save_load_with_metrics",
         "tests.test_summarize.test_build_package_tree",
         "tests.test_summarize.test_drill_down_nonexistent_package",
         "tests.test_summarize.test_drill_down_package",
@@ -786,5 +789,21 @@
         "tests.test_tools.test_self_analysis_multilang.test_self_analysis_languages_java_kotlin_on_mixed_fixture"
       ]
     }
-  ]
+  ],
+  "metrics": {
+    "RCI": 0.9907,
+    "TurboMQ": 1.6643,
+    "BasicMQ": 0.2378,
+    "IntraConnectivity": 0.0023,
+    "InterConnectivity": 0.0089,
+    "TwoWayPairRatio": 0.0,
+    "DependencyHealth": 0.9951,
+    "ComponentBalance": 0.225,
+    "HubBalance": 0.6667,
+    "BoundaryClarity": 1.0,
+    "DependencyDistribution": 0.5714,
+    "SmellDiscipline": 0.8571,
+    "PrincipleAlignmentScore": 0.8328,
+    "BalancedArchitectureScore": 0.6707
+  }
 }
