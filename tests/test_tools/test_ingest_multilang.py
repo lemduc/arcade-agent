@@ -82,6 +82,56 @@ def test_ingest_polyglot_can_include_jvm_test_source_sets(
     )
 
 
+def test_ingest_excludes_exact_custom_directories(
+    jvm_project_with_custom_layout: Path,
+):
+    repo = ingest(
+        str(jvm_project_with_custom_layout),
+        languages=["java", "kotlin"],
+        exclude_dirs=["integrationTest", "src/e2e", "modules/api/spec"],
+    )
+
+    relative_files = {
+        path.relative_to(jvm_project_with_custom_layout).as_posix()
+        for path in repo.source_files
+    }
+    assert relative_files == {
+        "integrationTesting/java/com/example/ProductionSupport.java",
+        "src/main/java/com/example/Main.java",
+    }
+
+
+def test_ingest_custom_directories_apply_when_default_policy_is_disabled(
+    jvm_project_with_custom_layout: Path,
+):
+    repo = ingest(
+        str(jvm_project_with_custom_layout),
+        languages=["java", "kotlin"],
+        exclude_tests=False,
+        exclude_dirs=["integrationTest"],
+    )
+
+    relative_files = {
+        path.relative_to(jvm_project_with_custom_layout).as_posix()
+        for path in repo.source_files
+    }
+    assert "integrationTest/java/com/example/CustomIntegration.java" not in relative_files
+    assert "src/e2e/kotlin/com/example/E2eScenario.kt" in relative_files
+
+
+def test_ingest_multi_detection_ignores_language_only_in_custom_exclusion(
+    jvm_project_with_custom_layout: Path,
+):
+    repo = ingest(
+        str(jvm_project_with_custom_layout),
+        language="multi",
+        exclude_dirs=["src/e2e"],
+    )
+
+    assert repo.language == "java"
+    assert repo.languages == ["java"]
+
+
 def test_ingest_auto_detection_ignores_test_only_language(tmp_path: Path):
     java_main = tmp_path / "src/main/java/com/example/Main.java"
     java_main.parent.mkdir(parents=True)

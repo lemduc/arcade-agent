@@ -111,6 +111,20 @@ def main() -> None:
         help="Comma-separated polyglot languages (e.g. java,kotlin)",
     )
     parser.add_argument(
+        "--exclude-dirs",
+        default="",
+        help=(
+            "Comma-separated project-relative directories to exclude "
+            "(e.g. integrationTest,src/e2e)"
+        ),
+    )
+    parser.add_argument(
+        "--exclude-tests",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Apply the built-in test/vendor/build exclusion policy (default: true)",
+    )
+    parser.add_argument(
         "--repo-name",
         default="",
         help="Optional project name override for reports",
@@ -149,9 +163,20 @@ def main() -> None:
     source = str(Path(args.source).resolve())
     language = args.language or None
     languages = [part.strip() for part in args.languages.split(",") if part.strip()] or None
+    exclude_dirs = [
+        part.strip()
+        for part in args.exclude_dirs.split(",")
+        if part.strip()
+    ] or None
 
     print(f"[1/5] Ingesting {source}...")
-    repo = ingest(source, language=language, languages=languages)
+    repo = ingest(
+        source,
+        language=language,
+        languages=languages,
+        exclude_tests=args.exclude_tests,
+        exclude_dirs=exclude_dirs,
+    )
     print(
         f"  Found {len(repo.source_files)} source files "
         f"(languages={repo.languages or [repo.language]})"

@@ -61,6 +61,7 @@ def _run_sync_pipeline(
     use_cache: bool = True,
     use_llm: bool = False,
     on_stage: StageCallback | None = None,
+    exclude_dirs: list[str] | None = None,
 ) -> AnalysisResult:
     """Run the full analysis pipeline sequentially on the calling thread."""
     from arcade_agent.tools.compute_metrics import compute_metrics
@@ -79,6 +80,7 @@ def _run_sync_pipeline(
             work_dir=work_dir,
             exclude_tests=exclude_tests,
             source_root=source_root,
+            exclude_dirs=exclude_dirs,
         )
         if on_stage is not None:
             on_stage("repository", repository)
@@ -156,8 +158,9 @@ def _failed_stage(
     description=(
         "Run the complete architecture analysis pipeline asynchronously: "
         "ingest, parse, recover, detect smells, and compute metrics. "
-        "Test/vendor/build directories are excluded by default. Blocking work "
-        "runs in a worker thread so the caller's event loop stays responsive."
+        "Test/vendor/build directories are excluded by default, with exact "
+        "custom directory exclusions supported. Blocking work runs in a worker "
+        "thread so the caller's event loop stays responsive."
     ),
 )
 async def analyze(
@@ -174,6 +177,7 @@ async def analyze(
     use_cache: bool = True,
     use_llm: bool = False,
     on_stage: StageCallback | None = None,
+    exclude_dirs: list[str] | None = None,
 ) -> AnalysisResult:
     """Run a complete analysis without blocking the caller's event loop.
 
@@ -189,6 +193,7 @@ async def analyze(
         source_root=source_root,
         work_dir=work_dir,
         exclude_tests=exclude_tests,
+        exclude_dirs=exclude_dirs,
         algorithm=algorithm,
         num_clusters=num_clusters,
         similarity_measure=similarity_measure,

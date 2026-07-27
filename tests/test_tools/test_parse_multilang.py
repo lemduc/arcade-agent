@@ -87,6 +87,58 @@ def test_parse_direct_can_include_jvm_test_source_sets(
     assert "com.example.FixtureKotlin" in graph.entities
 
 
+def test_parse_direct_excludes_exact_custom_directories(
+    jvm_project_with_custom_layout: Path,
+):
+    graph = parse(
+        str(jvm_project_with_custom_layout),
+        languages=["java", "kotlin"],
+        use_cache=False,
+        exclude_dirs=["integrationTest", "src/e2e", "modules/api/spec"],
+    )
+
+    assert set(graph.entities) == {
+        "com.example.Main",
+        "com.example.ProductionSupport",
+    }
+
+
+def test_parse_cache_separates_custom_exclusion_sets(
+    jvm_project_with_custom_layout: Path,
+):
+    without_integration = parse(
+        str(jvm_project_with_custom_layout),
+        languages=["java", "kotlin"],
+        use_cache=True,
+        exclude_dirs=["integrationTest"],
+    )
+    without_e2e = parse(
+        str(jvm_project_with_custom_layout),
+        languages=["java", "kotlin"],
+        use_cache=True,
+        exclude_dirs=["src/e2e"],
+    )
+
+    assert "com.example.CustomIntegration" not in without_integration.entities
+    assert "com.example.E2eScenario" in without_integration.entities
+    assert "com.example.CustomIntegration" in without_e2e.entities
+    assert "com.example.E2eScenario" not in without_e2e.entities
+
+
+def test_parse_multi_detection_ignores_language_only_in_custom_exclusion(
+    jvm_project_with_custom_layout: Path,
+):
+    graph = parse(
+        str(jvm_project_with_custom_layout),
+        language="multi",
+        use_cache=False,
+        exclude_dirs=["src/e2e"],
+    )
+
+    assert {entity.language for entity in graph.entities.values()} == {"java"}
+    assert "com.example.E2eScenario" not in graph.entities
+
+
 def test_parse_auto_detection_ignores_test_only_language(tmp_path: Path):
     java_main = tmp_path / "src/main/java/com/example/Main.java"
     java_main.parent.mkdir(parents=True)

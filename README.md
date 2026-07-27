@@ -192,7 +192,14 @@ Add to your Claude Code MCP settings:
 6. **Production-source default** — `ingest`, `analyze`, and automatic `parse`
    discovery exclude test/vendor/build directories by default. Set
    `exclude_tests=false` to include them; an explicit `parse(files=[...])` list
-   is always honored.
+   is always honored. For custom layouts, pass exact project-relative directory
+   prefixes such as `exclude_dirs=["integrationTest", "src/e2e"]`. These values
+   are not globs and apply only to the named directory and its descendants.
+
+The built-in policy treats any directory segment named `test` or `tests` as
+non-production, including a package such as `src/main/java/com/example/test`.
+Use `exclude_tests=false` if that convention is production code, then provide
+only the precise custom exclusions needed through `exclude_dirs`.
 
 ### Example agent workflow
 
@@ -223,6 +230,16 @@ Agent: call ingest(source="/path/to/project", languages=["java", "kotlin"])
 
 Agent: call parse(source_path="p1q2r3")
        → {session_id: "a1b2c3", num_entities: 420, num_edges: 960, ...}
+```
+
+For a repository with non-standard test locations:
+
+```
+Agent: call analyze(
+  source="/path/to/project",
+  language="multi",
+  exclude_dirs=["integrationTest", "src/e2e", "modules/api/spec"]
+)
 ```
 
 Use `language="multi"` instead when every detected supported language should
@@ -302,6 +319,8 @@ Common optional inputs:
           arcade-agent-version: "0.2.0"
           source-path: "."
           language: ""
+          exclude-tests: "true"
+          exclude-dirs: "integrationTest,src/e2e"
           primary-algorithm: pkg
           run-secondary-analyses: "true"
           baseline-branch: ""

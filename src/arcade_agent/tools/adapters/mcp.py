@@ -172,7 +172,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             "For polyglot repositories, pass languages such as ['java', 'kotlin'] "
             "to ingest; parse inherits that selection from the ingest session. "
             "Source discovery excludes test/vendor/build directories by default; "
-            "set exclude_tests=false when those files are intentionally in scope. "
+            "set exclude_tests=false when those files are intentionally in scope, "
+            "or pass project-relative exclude_dirs for custom layouts. "
             "Cross-language edges are only linked within a language family "
             "(java+kotlin today); other language pairs are parsed and merged "
             "but never linked to each other."
@@ -189,6 +190,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         work_dir: str | None = None,
         exclude_tests: bool = True,
         source_root: str | None = None,
+        exclude_dirs: list[str] | None = None,
         max_tokens: int | None = None,
     ) -> str:
         """Prepare source code for analysis.
@@ -205,6 +207,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             work_dir: Directory to clone into. Uses temp dir if None.
             exclude_tests: Exclude test/vendor/build directories (default True).
             source_root: Override source root (e.g. 'src/main/java').
+            exclude_dirs: Additional exact project-relative directories to exclude
+                (e.g. ["integrationTest", "src/e2e"]).
             max_tokens: Optional token budget for the response.
         """
         from arcade_agent.tools.ingest import ingest as _ingest
@@ -216,6 +220,7 @@ def _build_server():  # type: ignore[no-untyped-def]
             work_dir=work_dir,
             exclude_tests=exclude_tests,
             source_root=source_root,
+            exclude_dirs=exclude_dirs,
         )
         summary = _make_summary(result, "IngestedRepo")
         return json.dumps(_apply_budget(summary, max_tokens), indent=2)
@@ -229,6 +234,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         languages: list[str] | None = None,
         files: list[str] | None = None,
         exclude_tests: bool = True,
+        exclude_dirs: list[str] | None = None,
         use_cache: bool = True,
         max_tokens: int | None = None,
     ) -> str:
@@ -255,6 +261,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             files: Specific files to parse. Discovers all if None.
             exclude_tests: Exclude test/vendor/build directories during automatic
                 discovery (default True). Explicit files are always honored.
+            exclude_dirs: Additional exact project-relative directories to exclude
+                during automatic discovery.
             use_cache: Return cached results when source files haven't changed.
             max_tokens: Optional token budget for the response.
         """
@@ -269,6 +277,7 @@ def _build_server():  # type: ignore[no-untyped-def]
             languages=languages,
             files=files,
             exclude_tests=exclude_tests,
+            exclude_dirs=exclude_dirs,
             use_cache=use_cache,
         )
         summary = _make_summary(graph, "DependencyGraph")
@@ -283,6 +292,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         source_root: str | None = None,
         work_dir: str | None = None,
         exclude_tests: bool = True,
+        exclude_dirs: list[str] | None = None,
         algorithm: str = "pkg",
         num_clusters: int | None = None,
         similarity_measure: str = "uem",
@@ -305,6 +315,7 @@ def _build_server():  # type: ignore[no-untyped-def]
             source_root: Optional source-root override.
             work_dir: Directory used for remote clones.
             exclude_tests: Exclude test/vendor/build directories (default True).
+            exclude_dirs: Additional exact project-relative directories to exclude.
             algorithm: Architecture recovery algorithm.
             num_clusters: Optional target cluster count.
             similarity_measure: Similarity measure for supported algorithms.
@@ -348,6 +359,7 @@ def _build_server():  # type: ignore[no-untyped-def]
                 source_root=source_root,
                 work_dir=work_dir,
                 exclude_tests=exclude_tests,
+                exclude_dirs=exclude_dirs,
                 algorithm=algorithm,
                 num_clusters=num_clusters,
                 similarity_measure=similarity_measure,
@@ -603,6 +615,8 @@ def _build_server():  # type: ignore[no-untyped-def]
         language: str | None = None,
         focus: str | None = None,
         use_cache: bool = True,
+        exclude_tests: bool = True,
+        exclude_dirs: list[str] | None = None,
         max_tokens: int | None = None,
     ) -> str:
         """Summarize a codebase for quick understanding.
@@ -615,6 +629,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             language: Language to parse (auto-detected if None).
             focus: Package name to drill into (e.g. "com.example.auth").
             use_cache: Use cached parse results when available.
+            exclude_tests: Exclude test/vendor/build directories (default True).
+            exclude_dirs: Additional exact project-relative directories to exclude.
             max_tokens: Optional token budget for the response.
         """
         from arcade_agent.tools.summarize import summarize as _summarize
@@ -624,6 +640,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             language=language,
             focus=focus,
             use_cache=use_cache,
+            exclude_tests=exclude_tests,
+            exclude_dirs=exclude_dirs,
         )
         serialized = serialize_result(result)
         return json.dumps(_apply_budget(serialized, max_tokens), indent=2)

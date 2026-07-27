@@ -179,6 +179,36 @@ class TestMcpMultilangE2E:
         assert "com.example.IntegrationJavaTest" in entity_fqns
         assert "com.example.FixtureKotlin" in entity_fqns
 
+    def test_direct_parse_honors_exact_custom_exclusions(
+        self,
+        server,
+        jvm_project_with_custom_layout: Path,
+    ):
+        parse_result = _call(
+            server,
+            "parse",
+            {
+                "source_path": str(jvm_project_with_custom_layout),
+                "languages": ["java", "kotlin"],
+                "exclude_dirs": [
+                    "integrationTest",
+                    "src/e2e",
+                    "modules/api/spec",
+                ],
+                "use_cache": False,
+            },
+        )
+        full = _call(
+            server,
+            "get_full_result",
+            {"session_id": parse_result["session_id"]},
+        )
+
+        assert set(full["data"]["entities"]) == {
+            "com.example.Main",
+            "com.example.ProductionSupport",
+        }
+
     def test_parse_rejects_non_ingest_source_session(self, server):
         from mcp.server.fastmcp.exceptions import ToolError
 

@@ -82,12 +82,14 @@ def test_source_discovery_tools_document_default_test_exclusion():
         for tool in asyncio.run(get_server().list_tools())
     }
 
-    for name in ("ingest", "parse", "analyze"):
+    for name in ("ingest", "parse", "analyze", "summarize"):
         tool = tools[name]
         schema = tool.inputSchema
         assert schema["properties"]["exclude_tests"]["default"] is True
         assert "exclude_tests" in (tool.description or "")
         assert "default True" in (tool.description or "")
+        assert schema["properties"]["exclude_dirs"]["default"] is None
+        assert "exclude_dirs" in (tool.description or "")
 
 
 def test_session_store_and_resolve(sample_graph):

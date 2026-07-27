@@ -11,7 +11,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from git import Repo
 
-from arcade_agent.source_filter import is_excluded_source_path
+from arcade_agent.source_filter import (
+    ExcludedDirectories,
+    is_excluded_source_path,
+    normalize_exclude_dirs,
+)
 from arcade_agent.tools.registry import tool
 
 
@@ -68,14 +72,23 @@ _SOURCE_ROOTS = [
     "app",                  # Rails, some Python
 ]
 
-def _detect_language(path: Path, exclude_tests: bool = True) -> str | None:
+def _detect_language(
+    path: Path,
+    exclude_tests: bool = True,
+    exclude_dirs: ExcludedDirectories = (),
+) -> str | None:
     """Auto-detect the primary language from file extensions."""
     ext_counts: dict[str, int] = {}
     for f in path.rglob("*"):
         if (
             f.is_file()
             and f.suffix in _EXT_TO_LANG
-            and not (exclude_tests and is_excluded_source_path(f, path))
+            and not is_excluded_source_path(
+                f,
+                path,
+                exclude_defaults=exclude_tests,
+                exclude_dirs=exclude_dirs,
+            )
         ):
             ext_counts[f.suffix] = ext_counts.get(f.suffix, 0) + 1
 
@@ -86,14 +99,23 @@ def _detect_language(path: Path, exclude_tests: bool = True) -> str | None:
     return _EXT_TO_LANG.get(best_ext)
 
 
-def _detect_languages(path: Path, exclude_tests: bool = True) -> list[str]:
+def _detect_languages(
+    path: Path,
+    exclude_tests: bool = True,
+    exclude_dirs: ExcludedDirectories = (),
+) -> list[str]:
     """Detect all languages present under path (sorted)."""
     found: set[str] = set()
     for f in path.rglob("*"):
         if (
             f.is_file()
             and f.suffix in _EXT_TO_LANG
-            and not (exclude_tests and is_excluded_source_path(f, path))
+            and not is_excluded_source_path(
+                f,
+                path,
+                exclude_defaults=exclude_tests,
+                exclude_dirs=exclude_dirs,
+            )
         ):
             found.add(_EXT_TO_LANG[f.suffix])
     return sorted(found)
@@ -117,16 +139,12 @@ def _detect_source_root(path: Path, language: str | None = None) -> Path:
     return path
 
 
-def _should_exclude(file_path: Path, root: Path) -> bool:
-    """Check if a file should be excluded (test, vendored, build artifacts)."""
-    return is_excluded_source_path(file_path, root)
-
-
 def _discover_files(
     path: Path,
     language: str | None = None,
     exclude_tests: bool = True,
     source_root: Path | None = None,
+    exclude_dirs: ExcludedDirectories = (),
 ) -> list[Path]:
     """Discover source files for the given language.
 
@@ -135,6 +153,7 @@ def _discover_files(
         language: Language to filter for.
         exclude_tests: Whether to exclude test/vendor directories.
         source_root: Override source root (search here instead of path).
+        exclude_dirs: Additional exact project-relative directory exclusions.
     """
     search_path = source_root if source_root else path
 
@@ -146,7 +165,12 @@ def _discover_files(
     files = []
     for ext in extensions:
         for f in sorted(search_path.rglob(f"*{ext}")):
-            if exclude_tests and _should_exclude(f, path):
+            if is_excluded_source_path(
+                f,
+                path,
+                exclude_defaults=exclude_tests,
+                exclude_dirs=exclude_dirs,
+            ):
                 continue
             files.append(f)
     return files
@@ -168,6 +192,7 @@ def _resolve_languages(
     language: str | None,
     languages: list[str] | None,
     exclude_tests: bool,
+    exclude_dirs: ExcludedDirectories,
 ) -> list[str]:
     if language is not None and languages is not None:
         raise ValueError("Pass only one of language and languages")
@@ -176,13 +201,13 @@ def _resolve_languages(
             raise ValueError("languages must be non-empty")
         return _validate_known_languages(list(languages))
     if language == "multi":
-        detected = _detect_languages(path, exclude_tests)
+        detected = _detect_languages(path, exclude_tests, exclude_dirs)
         if not detected:
             raise ValueError(f"Could not detect languages in {path}")
         return detected
     if language:
         return _validate_known_languages([language])
-    primary = _detect_language(path, exclude_tests)
+    primary = _detect_language(path, exclude_tests, exclude_dirs)
     return [primary] if primary else []
 
 
@@ -217,7 +242,8 @@ def _repo_name_from_url(url: str) -> str:
 @tool(
     name="ingest",
     description="Prepare source code for analysis. Accepts git URL or local path. "
-    "Auto-detects source roots and filters out test/vendored code.",
+    "Auto-detects source roots, filters out test/vendored code by default, "
+    "and accepts exact custom directory exclusions.",
 )
 def ingest(
     source: str,
@@ -226,6 +252,7 @@ def ingest(
     work_dir: str | None = None,
     exclude_tests: bool = True,
     source_root: str | None = None,
+    exclude_dirs: list[str] | None = None,
 ) -> IngestedRepo:
     """Ingest a repository from a URL or local path.
 
@@ -238,14 +265,24 @@ def ingest(
         work_dir: Directory to clone into. Uses temp dir if None.
         exclude_tests: Exclude test/vendor/build directories (default: True).
         source_root: Override source root (e.g., 'src/main/java'). Auto-detected if None.
+        exclude_dirs: Additional exact project-relative directories to exclude
+            (e.g. ["integrationTest", "src/e2e"]).
 
     Returns:
         IngestedRepo with path, name, version, and source file list.
     """
     source_path = Path(source)
     sr = Path(source_root) if source_root else None
+    normalized_exclude_dirs = normalize_exclude_dirs(exclude_dirs)
     if source_path.is_dir():
-        return _ingest_local(source_path, language, languages, exclude_tests, sr)
+        return _ingest_local(
+            source_path,
+            language,
+            languages,
+            exclude_tests,
+            sr,
+            normalized_exclude_dirs,
+        )
     return _clone_and_ingest(
         source,
         language,
@@ -253,6 +290,7 @@ def ingest(
         Path(work_dir) if work_dir else None,
         exclude_tests,
         sr,
+        normalized_exclude_dirs,
     )
 
 
@@ -262,6 +300,7 @@ def _ingest_local(
     languages: list[str] | None = None,
     exclude_tests: bool = True,
     source_root: Path | None = None,
+    exclude_dirs: ExcludedDirectories = (),
 ) -> IngestedRepo:
     """Ingest a local directory."""
     name = path.name
@@ -276,7 +315,13 @@ def _ingest_local(
     except Exception:
         pass
 
-    resolved = _resolve_languages(path, language, languages, exclude_tests)
+    resolved = _resolve_languages(
+        path,
+        language,
+        languages,
+        exclude_tests,
+        exclude_dirs,
+    )
     return _build_ingested_repo(
         project_root=path,
         name=name,
@@ -286,6 +331,7 @@ def _ingest_local(
         languages=resolved,
         exclude_tests=exclude_tests,
         source_root=source_root,
+        exclude_dirs=exclude_dirs,
     )
 
 
@@ -296,6 +342,7 @@ def _clone_and_ingest(
     work_dir: Path | None = None,
     exclude_tests: bool = True,
     source_root: Path | None = None,
+    exclude_dirs: ExcludedDirectories = (),
 ) -> IngestedRepo:
     """Clone a remote repo and ingest it."""
     name = _repo_name_from_url(url)
@@ -316,7 +363,13 @@ def _clone_and_ingest(
         except GitCommandError:
             pass
 
-    resolved = _resolve_languages(clone_path, language, languages, exclude_tests)
+    resolved = _resolve_languages(
+        clone_path,
+        language,
+        languages,
+        exclude_tests,
+        exclude_dirs,
+    )
     return _build_ingested_repo(
         project_root=clone_path,
         name=name,
@@ -326,6 +379,7 @@ def _clone_and_ingest(
         languages=resolved,
         exclude_tests=exclude_tests,
         source_root=source_root,
+        exclude_dirs=exclude_dirs,
     )
 
 
@@ -339,6 +393,7 @@ def _build_ingested_repo(
     languages: list[str],
     exclude_tests: bool,
     source_root: Path | None,
+    exclude_dirs: ExcludedDirectories,
 ) -> IngestedRepo:
     multilang = len(languages) > 1
 
@@ -370,13 +425,23 @@ def _build_ingested_repo(
     if languages:
         for lang in languages:
             source_files.extend(
-                _discover_files(project_root, lang, exclude_tests, search_root)
+                _discover_files(
+                    project_root,
+                    lang,
+                    exclude_tests,
+                    search_root,
+                    exclude_dirs,
+                )
             )
         # Preserve stable order while dropping duplicates across languages.
         source_files = list(dict.fromkeys(source_files))
     else:
         source_files = _discover_files(
-            project_root, None, exclude_tests, effective_root
+            project_root,
+            None,
+            exclude_tests,
+            effective_root,
+            exclude_dirs,
         )
 
     primary = languages[0] if len(languages) == 1 else (

@@ -34,6 +34,16 @@ inputs:
       exclusive with language when both would be set by the caller.
     required: false
     default: ""
+  exclude-dirs:
+    description: >
+      Optional comma-separated project-relative directories to exclude in
+      addition to the built-in policy (e.g. integrationTest,src/e2e).
+    required: false
+    default: ""
+  exclude-tests:
+    description: Apply the built-in test/vendor/build exclusion policy.
+    required: false
+    default: "true"
   repo-name:
     description: Optional repository name override for reports.
     required: false
@@ -144,6 +154,8 @@ runs:
         SOURCE_PATH: ${{ inputs.source-path }}
         LANGUAGE: ${{ inputs.language }}
         LANGUAGES: ${{ inputs.languages }}
+        EXCLUDE_DIRS: ${{ inputs.exclude-dirs }}
+        EXCLUDE_TESTS: ${{ inputs.exclude-tests }}
         REPO_NAME: ${{ inputs.repo-name }}
         PRIMARY_ALGORITHM: ${{ inputs.primary-algorithm }}
         FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
@@ -153,6 +165,12 @@ runs:
           ARGS+=(--languages "${LANGUAGES}")
         elif [ -n "${LANGUAGE}" ]; then
           ARGS+=(--language "${LANGUAGE}")
+        fi
+        if [ -n "${EXCLUDE_DIRS}" ]; then
+          ARGS+=(--exclude-dirs "${EXCLUDE_DIRS}")
+        fi
+        if [ "${EXCLUDE_TESTS}" = "false" ]; then
+          ARGS+=(--no-exclude-tests)
         fi
         if [ -n "${REPO_NAME}" ]; then
           ARGS+=(--repo-name "${REPO_NAME}")
@@ -173,6 +191,8 @@ runs:
         SOURCE_PATH: ${{ inputs.source-path }}
         LANGUAGE: ${{ inputs.language }}
         LANGUAGES: ${{ inputs.languages }}
+        EXCLUDE_DIRS: ${{ inputs.exclude-dirs }}
+        EXCLUDE_TESTS: ${{ inputs.exclude-tests }}
         REPO_NAME: ${{ inputs.repo-name }}
         WCA_NUM_CLUSTERS: ${{ inputs.wca-num-clusters }}
         FILTER_NON_ARCHITECTURAL_HELPERS: ${{ inputs.filter-non-architectural-helpers }}
@@ -182,6 +202,12 @@ runs:
           ARGS+=(--languages "${LANGUAGES}")
         elif [ -n "${LANGUAGE}" ]; then
           ARGS+=(--language "${LANGUAGE}")
+        fi
+        if [ -n "${EXCLUDE_DIRS}" ]; then
+          ARGS+=(--exclude-dirs "${EXCLUDE_DIRS}")
+        fi
+        if [ "${EXCLUDE_TESTS}" = "false" ]; then
+          ARGS+=(--no-exclude-tests)
         fi
         if [ -n "${REPO_NAME}" ]; then
           ARGS+=(--repo-name "${REPO_NAME}")

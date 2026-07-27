@@ -70,6 +70,33 @@ def jvm_project_with_tests(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def jvm_project_with_custom_layout(tmp_path: Path) -> Path:
+    """Create a JVM project with non-standard test directories."""
+    sources = {
+        "src/main/java/com/example/Main.java": (
+            "package com.example; public class Main {}\n"
+        ),
+        "integrationTest/java/com/example/CustomIntegration.java": (
+            "package com.example; public class CustomIntegration {}\n"
+        ),
+        "src/e2e/kotlin/com/example/E2eScenario.kt": (
+            "package com.example\nclass E2eScenario\n"
+        ),
+        "modules/api/spec/java/com/example/ApiSpec.java": (
+            "package com.example; public class ApiSpec {}\n"
+        ),
+        "integrationTesting/java/com/example/ProductionSupport.java": (
+            "package com.example; public class ProductionSupport {}\n"
+        ),
+    }
+    for relative_path, source in sources.items():
+        target = tmp_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source)
+    return tmp_path
+
+
+@pytest.fixture
 def python_files():
     return sorted(FIXTURES_DIR.glob("*.py"))
 
