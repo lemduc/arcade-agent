@@ -16,8 +16,8 @@ from typing import Any
 
 from arcade_agent.algorithms.coupling import compute_balanced_scores
 from arcade_agent.algorithms.smells import SmellInstance
+from arcade_agent.ci.graph_filter import _filter_non_architectural_entities
 from arcade_agent.exporters.json import build_component_summary, build_graph_summary
-from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.compute_metrics import compute_metrics
 from arcade_agent.tools.detect_smells import detect_smells
 from arcade_agent.tools.ingest import ingest
@@ -35,57 +35,6 @@ def _smell_to_dict(smell: SmellInstance) -> dict[str, Any]:
     elif not isinstance(d.get("smell_type"), str):
         d["smell_type"] = str(d["smell_type"])
     return d
-
-
-def _filter_non_architectural_entities(graph: DependencyGraph) -> DependencyGraph:
-    """Remove low-signal helper entities from self-analysis.
-
-    The repository self-analysis is meant to approximate architectural units, not
-    every internal helper. Private Python top-level helper functions inflate
-    component size and smell counts without representing stable architectural
-    responsibilities, and decorator-registration imports such as ``@tool`` or
-    ``@register_parser`` can create misleading coupling across recovered
-    components after facade reassignment. Exclude those from the self-analysis
-    graph only; the underlying parser output remains unchanged.
-    """
-    kept_entities = {
-        fqn: entity
-        for fqn, entity in graph.entities.items()
-        if entity.kind != "method"
-        and not (
-            entity.language == "python"
-            and entity.kind == "function"
-            and entity.name.startswith("_")
-        )
-    }
-
-    kept_edges = []
-    registration_helpers = {"tool", "register_parser"}
-    for edge in graph.edges:
-        if edge.source not in kept_entities or edge.target not in kept_entities:
-            continue
-
-        target_entity = kept_entities[edge.target]
-        if (
-            edge.relation == "import"
-            and target_entity.kind == "function"
-            and target_entity.name in registration_helpers
-        ):
-            continue
-
-        kept_edges.append(edge)
-
-    kept_packages: dict[str, list[str]] = {}
-    for pkg, fqns in graph.packages.items():
-        filtered_fqns = [fqn for fqn in fqns if fqn in kept_entities]
-        if filtered_fqns:
-            kept_packages[pkg] = filtered_fqns
-
-    return DependencyGraph(
-        entities=kept_entities,
-        edges=kept_edges,
-        packages=kept_packages,
-    )
 
 
 def main() -> None:

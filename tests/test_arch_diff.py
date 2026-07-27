@@ -91,6 +91,23 @@ def test_diff_no_baseline(sample_arch, sample_graph, sample_metrics):
     assert "0.75" in report
 
 
+def test_diff_report_explains_incompatible_baseline_profile(
+    sample_arch,
+    sample_graph,
+    sample_metrics,
+):
+    report = build_report(
+        current=sample_arch,
+        graph=sample_graph,
+        metrics=sample_metrics,
+        smells=[],
+        baseline_note="Baseline comparison skipped because profiles differ.",
+    )
+
+    assert "Baseline comparison skipped because profiles differ." in report
+    assert "Drift from Baseline" not in report
+
+
 def test_diff_report_includes_balanced_scores(sample_arch, sample_graph, sample_metrics):
     """Report includes balanced scores in the legacy drift comment surface."""
     metrics = sample_metrics + [
@@ -256,3 +273,21 @@ def test_main_update_baseline(tmp_path, monkeypatch):
     assert len(loaded.components) >= 1
     # Metrics are persisted for future drift deltas
     assert "RCI" in bl_metrics
+
+
+def test_main_filtered_baseline_records_analysis_profile(tmp_path):
+    baseline_path = tmp_path / "baseline.json"
+    source_path = tmp_path / "project"
+    source_path.mkdir()
+    (source_path / "app.py").write_text("def run():\n    return 1\n")
+
+    main([
+        "--source", str(source_path),
+        "--language", "python",
+        "--baseline", str(baseline_path),
+        "--filter-non-architectural-helpers",
+        "--update-baseline",
+    ])
+
+    loaded, _ = load_architecture(baseline_path)
+    assert loaded.metadata["analysis_profile"] == "arcade-self-dogfood-v1"

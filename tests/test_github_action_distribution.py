@@ -108,6 +108,8 @@ def test_legacy_drift_workflow_uses_default_branch_for_baseline_updates():
     workflow = (ROOT / ".github/workflows/arch-drift.yml").read_text()
 
     assert "github.event.repository.default_branch" in workflow
+    assert workflow.count("--filter-non-architectural-helpers") == 2
+    assert workflow.count("ARGS=(--source src ") == 2
     assert "refs/heads/main" not in workflow
     assert "stefanzweifel/git-auto-commit-action" not in workflow
     assert "contents: read" in workflow
