@@ -5,7 +5,7 @@ from typing import Any
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.traversal import adjacency_with_relations, walk_cone
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tools.registry import tool
+from arcade_agent.tooling.registry import tool
 
 
 def _paths_match(entity_path: str, changed_file: str) -> bool:

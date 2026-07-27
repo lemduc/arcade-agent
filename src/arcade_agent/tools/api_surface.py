@@ -3,7 +3,7 @@
 from typing import Any
 
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tools.registry import tool
+from arcade_agent.tooling.registry import tool
 
 _NOTE = (
     "Public API surface only: implementation bodies, private members, and "

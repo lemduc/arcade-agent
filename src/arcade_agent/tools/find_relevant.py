@@ -4,7 +4,7 @@ import re
 
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tools.registry import tool
+from arcade_agent.tooling.registry import tool
 
 
 def _tokenize(text: str) -> list[str]:

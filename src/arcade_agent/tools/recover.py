@@ -6,7 +6,7 @@ from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.clustering import wca
 from arcade_agent.algorithms.limbo import limbo
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tools.registry import tool
+from arcade_agent.tooling.registry import tool
 
 
 def _build_package_groups(

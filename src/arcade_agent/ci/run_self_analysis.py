@@ -12,6 +12,7 @@ import sys
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from arcade_agent.algorithms.coupling import compute_balanced_scores
 from arcade_agent.algorithms.smells import SmellInstance
@@ -25,7 +26,7 @@ from arcade_agent.tools.recover import recover
 from arcade_agent.tools.visualize import visualize
 
 
-def _smell_to_dict(smell: SmellInstance) -> dict:
+def _smell_to_dict(smell: SmellInstance) -> dict[str, Any]:
     """Serialize a SmellInstance to a plain dict."""
     d = asdict(smell)
     # SmellType enum → string
@@ -64,12 +65,9 @@ def _filter_non_architectural_entities(graph: DependencyGraph) -> DependencyGrap
         if edge.source not in kept_entities or edge.target not in kept_entities:
             continue
 
-        source_entity = kept_entities[edge.source]
         target_entity = kept_entities[edge.target]
         if (
             edge.relation == "import"
-            and source_entity.package
-            and source_entity.package == target_entity.package
             and target_entity.kind == "function"
             and target_entity.name in registration_helpers
         ):

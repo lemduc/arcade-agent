@@ -26,11 +26,11 @@ def test_self_analysis_filters_registration_import_edges_only():
                 kind="function",
                 language="python",
             ),
-            "arcade_agent.tools.registry.tool": Entity(
-                fqn="arcade_agent.tools.registry.tool",
+            "arcade_agent.tooling.registry.tool": Entity(
+                fqn="arcade_agent.tooling.registry.tool",
                 name="tool",
-                package="arcade_agent.tools",
-                file_path="src/arcade_agent/tools/registry.py",
+                package="arcade_agent.tooling",
+                file_path="src/arcade_agent/tooling/registry.py",
                 kind="function",
                 language="python",
             ),
@@ -46,7 +46,7 @@ def test_self_analysis_filters_registration_import_edges_only():
         edges=[
             Edge(
                 source="arcade_agent.tools.compare.compare",
-                target="arcade_agent.tools.registry.tool",
+                target="arcade_agent.tooling.registry.tool",
                 relation="import",
             ),
             Edge(
@@ -58,8 +58,8 @@ def test_self_analysis_filters_registration_import_edges_only():
         packages={
             "arcade_agent.tools": [
                 "arcade_agent.tools.compare.compare",
-                "arcade_agent.tools.registry.tool",
             ],
+            "arcade_agent.tooling": ["arcade_agent.tooling.registry.tool"],
             "arcade_agent.algorithms": [
                 "arcade_agent.algorithms.matching.match_components",
             ],
@@ -70,7 +70,7 @@ def test_self_analysis_filters_registration_import_edges_only():
 
     assert (
         "arcade_agent.tools.compare.compare",
-        "arcade_agent.tools.registry.tool",
+        "arcade_agent.tooling.registry.tool",
         "import",
     ) not in filtered.to_edge_tuples()
     assert (

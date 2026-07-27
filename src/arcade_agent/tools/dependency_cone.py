@@ -4,8 +4,8 @@ from typing import Any
 
 from arcade_agent.algorithms.traversal import adjacency_with_relations, walk_cone
 from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.tooling.registry import tool
 from arcade_agent.tools.diff_impact import _paths_match
-from arcade_agent.tools.registry import tool
 
 _VALID_DIRECTIONS = ("upstream", "downstream", "both")
 

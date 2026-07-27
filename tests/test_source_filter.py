@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from arcade_agent.source_filter import (
+from arcade_agent.source.filtering import (
     is_excluded_source_path,
     normalize_exclude_dirs,
 )
