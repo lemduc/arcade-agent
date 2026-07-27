@@ -189,6 +189,10 @@ Add to your Claude Code MCP settings:
 3. **Token budget** — Every tool accepts an optional `max_tokens` parameter. Outputs are progressively truncated (entity details → edge summaries → component counts) to fit.
 4. **Parse caching** — Parsed dependency graphs are cached to `.arcade-cache/` keyed by file modification times. Repeated analysis of the same codebase skips re-parsing.
 5. **On-demand detail** — Call `get_full_result(session_id)` to retrieve complete data when the summary isn't enough.
+6. **Production-source default** — `ingest`, `analyze`, and automatic `parse`
+   discovery exclude test/vendor/build directories by default. Set
+   `exclude_tests=false` to include them; an explicit `parse(files=[...])` list
+   is always honored.
 
 ### Example agent workflow
 

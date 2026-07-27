@@ -119,6 +119,66 @@ class TestMcpMultilangE2E:
         assert "com.example.JavaGreeter" in entity_fqns
         assert "com.example.KotlinGreeter" in entity_fqns
 
+    def test_direct_parse_excludes_jvm_tests_by_default(
+        self,
+        server,
+        jvm_project_with_tests: Path,
+    ):
+        parse_result = _call(
+            server,
+            "parse",
+            {
+                "source_path": str(jvm_project_with_tests),
+                "languages": ["java", "kotlin"],
+                "use_cache": False,
+            },
+        )
+
+        full = _call(
+            server,
+            "get_full_result",
+            {"session_id": parse_result["session_id"]},
+        )
+        entity_fqns = set(full["data"]["entities"])
+        assert entity_fqns == {
+            "com.example.LatestJava",
+            "com.example.MainJava",
+            "com.example.MainKotlin",
+        }
+
+    def test_ingest_parse_chain_preserves_include_tests_override(
+        self,
+        server,
+        jvm_project_with_tests: Path,
+    ):
+        ingest_result = _call(
+            server,
+            "ingest",
+            {
+                "source": str(jvm_project_with_tests),
+                "languages": ["java", "kotlin"],
+                "exclude_tests": False,
+            },
+        )
+        parse_result = _call(
+            server,
+            "parse",
+            {
+                "source_path": ingest_result["session_id"],
+                "use_cache": False,
+            },
+        )
+        full = _call(
+            server,
+            "get_full_result",
+            {"session_id": parse_result["session_id"]},
+        )
+        entity_fqns = set(full["data"]["entities"])
+        assert "com.example.UnitJavaTest" in entity_fqns
+        assert "com.example.UnitKotlinTest" in entity_fqns
+        assert "com.example.IntegrationJavaTest" in entity_fqns
+        assert "com.example.FixtureKotlin" in entity_fqns
+
     def test_parse_rejects_non_ingest_source_session(self, server):
         from mcp.server.fastmcp.exceptions import ToolError
 

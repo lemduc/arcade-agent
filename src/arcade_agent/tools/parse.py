@@ -8,6 +8,7 @@ from arcade_agent.cache import cache_key, get_cached_graph, put_cached_graph
 from arcade_agent.parsers.base import detect_language, get_parser
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.parsers.multilang import merge_and_relink
+from arcade_agent.source_filter import is_excluded_source_path
 from arcade_agent.tools.registry import tool
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ def _resolve_languages(
     language: str | None,
     languages: list[str] | None,
     file_paths: list[Path] | None,
+    exclude_tests: bool = True,
 ) -> list[str]:
     if language is not None and languages is not None:
         raise ValueError("Pass only one of language and languages")
@@ -38,7 +40,10 @@ def _resolve_languages(
         return sorted(dict.fromkeys(languages))
     if language == "multi":
         discover = file_paths if file_paths is not None else [
-            f for f in root.rglob("*") if f.is_file()
+            f
+            for f in root.rglob("*")
+            if f.is_file()
+            and not (exclude_tests and is_excluded_source_path(f, root))
         ]
         detected_languages = detect_languages_from_files(discover)
         if not detected_languages:
@@ -47,7 +52,10 @@ def _resolve_languages(
     if language:
         return [language]
     discover = file_paths if file_paths is not None else [
-        f for f in root.rglob("*") if f.is_file()
+        f
+        for f in root.rglob("*")
+        if f.is_file()
+        and not (exclude_tests and is_excluded_source_path(f, root))
     ]
     detected_language = detect_language(discover)
     if not detected_language:
@@ -91,12 +99,20 @@ def _parse_one(
     return parser.parse(file_paths, root)
 
 
-def _discover_files(root: Path, languages: list[str]) -> list[Path]:
+def _discover_files(
+    root: Path,
+    languages: list[str],
+    exclude_tests: bool,
+) -> list[Path]:
     file_paths: list[Path] = []
     for language in languages:
         parser = get_parser(language)
         for ext in parser.file_extensions:
-            file_paths.extend(sorted(root.rglob(f"*{ext}")))
+            file_paths.extend(
+                f
+                for f in sorted(root.rglob(f"*{ext}"))
+                if not (exclude_tests and is_excluded_source_path(f, root))
+            )
     return list(dict.fromkeys(file_paths))
 
 
@@ -104,7 +120,8 @@ def _discover_files(root: Path, languages: list[str]) -> list[Path]:
     name="parse",
     description=(
         "Parse source code and extract a dependency graph "
-        "with entities, edges, and packages."
+        "with entities, edges, and packages. Automatic discovery excludes "
+        "test/vendor/build directories by default."
     ),
 )
 def parse(
@@ -113,6 +130,7 @@ def parse(
     languages: list[str] | None = None,
     files: list[str] | None = None,
     use_cache: bool = True,
+    exclude_tests: bool = True,
 ) -> DependencyGraph:
     """Parse source code and extract a dependency graph.
 
@@ -132,8 +150,11 @@ def parse(
             (e.g. ["java", "kotlin"]). Sorted internally, so ordering does not
             change the result. Mutually exclusive with *language*.
         files: Specific files to parse. If None, discovers all files. Files not
-            matching any resolved language are skipped (with a warning).
+            matching any resolved language are skipped (with a warning). An
+            explicit list is authoritative and is not filtered.
         use_cache: If True, return cached results when source files haven't changed.
+        exclude_tests: Exclude test/vendor/build directories during automatic
+            file discovery (default: True).
 
     Returns:
         DependencyGraph with entities, edges, package info and, for polyglot
@@ -141,11 +162,19 @@ def parse(
     """
     root = Path(source_path)
     provided_files = [Path(f) for f in files] if files else None
-    resolved = _resolve_languages(root, language, languages, provided_files)
+    resolved = _resolve_languages(
+        root,
+        language,
+        languages,
+        provided_files,
+        exclude_tests,
+    )
     cache_lang = _cache_language_key(
         language if language != "multi" else "multi",
         resolved if len(resolved) > 1 else None,
     )
+    if provided_files is None:
+        cache_lang = f"{cache_lang or 'auto'}|exclude_tests={exclude_tests}"
 
     if use_cache:
         key = cache_key(source_path, cache_lang, files)
@@ -156,7 +185,7 @@ def parse(
     if provided_files is not None:
         file_paths = provided_files
     else:
-        file_paths = _discover_files(root, resolved)
+        file_paths = _discover_files(root, resolved, exclude_tests)
 
     per_language = {lang: _files_for_language(file_paths, lang) for lang in resolved}
     selected = {f for files_ in per_language.values() for f in files_}

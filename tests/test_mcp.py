@@ -1,5 +1,7 @@
 """Tests for MCP server adapter."""
 
+import asyncio
+
 import pytest
 
 from arcade_agent.parsers.graph import DependencyGraph
@@ -69,6 +71,23 @@ def test_serialize_result_path():
 # ---------------------------------------------------------------------------
 # Session store tests
 # ---------------------------------------------------------------------------
+
+
+def test_source_discovery_tools_document_default_test_exclusion():
+    pytest.importorskip("mcp", reason="mcp extra not installed")
+    from arcade_agent.tools.adapters.mcp import get_server
+
+    tools = {
+        tool.name: tool
+        for tool in asyncio.run(get_server().list_tools())
+    }
+
+    for name in ("ingest", "parse", "analyze"):
+        tool = tools[name]
+        schema = tool.inputSchema
+        assert schema["properties"]["exclude_tests"]["default"] is True
+        assert "exclude_tests" in (tool.description or "")
+        assert "default True" in (tool.description or "")
 
 
 def test_session_store_and_resolve(sample_graph):

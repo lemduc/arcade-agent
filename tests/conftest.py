@@ -31,6 +31,45 @@ def kotlin_embabel_pattern_files():
 
 
 @pytest.fixture
+def jvm_project_with_tests(tmp_path: Path) -> Path:
+    """Create a JVM project with main, test, and custom Gradle source sets."""
+    sources = {
+        "src/main/java/com/example/MainJava.java": (
+            "package com.example; public class MainJava {}\n"
+        ),
+        "src/main/kotlin/com/example/MainKotlin.kt": (
+            "package com.example\nclass MainKotlin\n"
+        ),
+        "src/test/java/com/example/UnitJavaTest.java": (
+            "package com.example; public class UnitJavaTest {}\n"
+        ),
+        "src/test/kotlin/com/example/UnitKotlinTest.kt": (
+            "package com.example\nclass UnitKotlinTest\n"
+        ),
+        "src/integrationTest/java/com/example/IntegrationJavaTest.java": (
+            "package com.example; public class IntegrationJavaTest {}\n"
+        ),
+        "src/integrationTest/kotlin/com/example/IntegrationKotlinTest.kt": (
+            "package com.example\nclass IntegrationKotlinTest\n"
+        ),
+        "src/testFixtures/java/com/example/FixtureJava.java": (
+            "package com.example; public class FixtureJava {}\n"
+        ),
+        "src/testFixtures/kotlin/com/example/FixtureKotlin.kt": (
+            "package com.example\nclass FixtureKotlin\n"
+        ),
+        "src/latest/java/com/example/LatestJava.java": (
+            "package com.example; public class LatestJava {}\n"
+        ),
+    }
+    for relative_path, source in sources.items():
+        target = tmp_path / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source)
+    return tmp_path
+
+
+@pytest.fixture
 def python_files():
     return sorted(FIXTURES_DIR.glob("*.py"))
 

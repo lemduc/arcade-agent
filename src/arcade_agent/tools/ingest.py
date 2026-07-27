@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from git import Repo
 
+from arcade_agent.source_filter import is_excluded_source_path
 from arcade_agent.tools.registry import tool
 
 
@@ -67,36 +68,15 @@ _SOURCE_ROOTS = [
     "app",                  # Rails, some Python
 ]
 
-# Directories to exclude
-_EXCLUDE_DIRS = {
-    "src/test",
-    "src/tests",
-    "test",
-    "tests",
-    "node_modules",
-    "vendor",
-    "third_party",
-    "third-party",
-    "thirdparty",
-    "external",
-    "ext-tools",
-    "build",
-    "dist",
-    "target",
-    ".git",
-    ".svn",
-    "__pycache__",
-    ".venv",
-    "venv",
-    "env",
-}
-
-
-def _detect_language(path: Path) -> str | None:
+def _detect_language(path: Path, exclude_tests: bool = True) -> str | None:
     """Auto-detect the primary language from file extensions."""
     ext_counts: dict[str, int] = {}
     for f in path.rglob("*"):
-        if f.is_file() and f.suffix in _EXT_TO_LANG:
+        if (
+            f.is_file()
+            and f.suffix in _EXT_TO_LANG
+            and not (exclude_tests and is_excluded_source_path(f, path))
+        ):
             ext_counts[f.suffix] = ext_counts.get(f.suffix, 0) + 1
 
     if not ext_counts:
@@ -106,11 +86,15 @@ def _detect_language(path: Path) -> str | None:
     return _EXT_TO_LANG.get(best_ext)
 
 
-def _detect_languages(path: Path) -> list[str]:
+def _detect_languages(path: Path, exclude_tests: bool = True) -> list[str]:
     """Detect all languages present under path (sorted)."""
     found: set[str] = set()
     for f in path.rglob("*"):
-        if f.is_file() and f.suffix in _EXT_TO_LANG:
+        if (
+            f.is_file()
+            and f.suffix in _EXT_TO_LANG
+            and not (exclude_tests and is_excluded_source_path(f, path))
+        ):
             found.add(_EXT_TO_LANG[f.suffix])
     return sorted(found)
 
@@ -135,19 +119,7 @@ def _detect_source_root(path: Path, language: str | None = None) -> Path:
 
 def _should_exclude(file_path: Path, root: Path) -> bool:
     """Check if a file should be excluded (test, vendored, build artifacts)."""
-    try:
-        rel = file_path.relative_to(root)
-    except ValueError:
-        return False
-
-    parts = rel.parts
-    for i in range(len(parts)):
-        subpath = "/".join(parts[: i + 1])
-        if subpath in _EXCLUDE_DIRS:
-            return True
-        if parts[i] in _EXCLUDE_DIRS:
-            return True
-    return False
+    return is_excluded_source_path(file_path, root)
 
 
 def _discover_files(
@@ -195,6 +167,7 @@ def _resolve_languages(
     path: Path,
     language: str | None,
     languages: list[str] | None,
+    exclude_tests: bool,
 ) -> list[str]:
     if language is not None and languages is not None:
         raise ValueError("Pass only one of language and languages")
@@ -203,13 +176,13 @@ def _resolve_languages(
             raise ValueError("languages must be non-empty")
         return _validate_known_languages(list(languages))
     if language == "multi":
-        detected = _detect_languages(path)
+        detected = _detect_languages(path, exclude_tests)
         if not detected:
             raise ValueError(f"Could not detect languages in {path}")
         return detected
     if language:
         return _validate_known_languages([language])
-    primary = _detect_language(path)
+    primary = _detect_language(path, exclude_tests)
     return [primary] if primary else []
 
 
@@ -303,7 +276,7 @@ def _ingest_local(
     except Exception:
         pass
 
-    resolved = _resolve_languages(path, language, languages)
+    resolved = _resolve_languages(path, language, languages, exclude_tests)
     return _build_ingested_repo(
         project_root=path,
         name=name,
@@ -343,7 +316,7 @@ def _clone_and_ingest(
         except GitCommandError:
             pass
 
-    resolved = _resolve_languages(clone_path, language, languages)
+    resolved = _resolve_languages(clone_path, language, languages, exclude_tests)
     return _build_ingested_repo(
         project_root=clone_path,
         name=name,

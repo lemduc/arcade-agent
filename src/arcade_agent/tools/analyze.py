@@ -156,7 +156,8 @@ def _failed_stage(
     description=(
         "Run the complete architecture analysis pipeline asynchronously: "
         "ingest, parse, recover, detect smells, and compute metrics. "
-        "Blocking work runs in a worker thread so the caller's event loop stays responsive."
+        "Test/vendor/build directories are excluded by default. Blocking work "
+        "runs in a worker thread so the caller's event loop stays responsive."
     ),
 )
 async def analyze(

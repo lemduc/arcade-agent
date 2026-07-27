@@ -171,6 +171,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             "'parse', then pass the parse session_id as dep_graph to 'recover'. "
             "For polyglot repositories, pass languages such as ['java', 'kotlin'] "
             "to ingest; parse inherits that selection from the ingest session. "
+            "Source discovery excludes test/vendor/build directories by default; "
+            "set exclude_tests=false when those files are intentionally in scope. "
             "Cross-language edges are only linked within a language family "
             "(java+kotlin today); other language pairs are parsed and merged "
             "but never linked to each other."
@@ -226,6 +228,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         language: str | None = None,
         languages: list[str] | None = None,
         files: list[str] | None = None,
+        exclude_tests: bool = True,
         use_cache: bool = True,
         max_tokens: int | None = None,
     ) -> str:
@@ -250,6 +253,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).
                 Mutually exclusive with language.
             files: Specific files to parse. Discovers all if None.
+            exclude_tests: Exclude test/vendor/build directories during automatic
+                discovery (default True). Explicit files are always honored.
             use_cache: Return cached results when source files haven't changed.
             max_tokens: Optional token budget for the response.
         """
@@ -263,6 +268,7 @@ def _build_server():  # type: ignore[no-untyped-def]
             language=language,
             languages=languages,
             files=files,
+            exclude_tests=exclude_tests,
             use_cache=use_cache,
         )
         summary = _make_summary(graph, "DependencyGraph")
@@ -292,6 +298,21 @@ def _build_server():  # type: ignore[no-untyped-def]
         loop stays responsive. Per-stage session IDs are stored as each stage
         completes, so a later failure still leaves earlier artifacts reusable.
         Session IDs match the conventions of the fine-grained MCP tools.
+
+        Args:
+            source: Git repo URL or local directory path.
+            language: Optional language override, including "multi".
+            source_root: Optional source-root override.
+            work_dir: Directory used for remote clones.
+            exclude_tests: Exclude test/vendor/build directories (default True).
+            algorithm: Architecture recovery algorithm.
+            num_clusters: Optional target cluster count.
+            similarity_measure: Similarity measure for supported algorithms.
+            pkg_depth: Optional package depth.
+            hybrid_weight: Hybrid recovery weight.
+            use_cache: Reuse parse caches when valid.
+            use_llm: Enable LLM-assisted smell explanations.
+            max_tokens: Optional token budget for the response.
         """
         from arcade_agent.tools.analyze import (
             PartialAnalysisError,
