@@ -173,6 +173,25 @@ def test_make_summary_architecture(sample_architecture):
     assert summary["components"][0]["num_entities"] == 2
 
 
+def test_make_summary_ingested_repo_includes_exclusion_snapshot(tmp_path):
+    from arcade_agent.tools.adapters.mcp import _make_summary, _session
+    from arcade_agent.tools.ingest import IngestedRepo
+
+    _session.clear()
+    repository = IngestedRepo(
+        path=tmp_path,
+        name="sample",
+        version="local",
+        exclude_tests=False,
+        exclude_dirs=["integrationTest", "src/e2e"],
+    )
+
+    summary = _make_summary(repository, "IngestedRepo")
+
+    assert summary["exclude_tests"] is False
+    assert summary["exclude_dirs"] == ["integrationTest", "src/e2e"]
+
+
 # ---------------------------------------------------------------------------
 # Budget integration test
 # ---------------------------------------------------------------------------

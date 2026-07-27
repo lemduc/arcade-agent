@@ -99,6 +99,12 @@ def test_ingest_excludes_exact_custom_directories(
         "integrationTesting/java/com/example/ProductionSupport.java",
         "src/main/java/com/example/Main.java",
     }
+    assert repo.exclude_tests is True
+    assert repo.exclude_dirs == [
+        "integrationTest",
+        "modules/api/spec",
+        "src/e2e",
+    ]
 
 
 def test_ingest_custom_directories_apply_when_default_policy_is_disabled(
@@ -117,6 +123,8 @@ def test_ingest_custom_directories_apply_when_default_policy_is_disabled(
     }
     assert "integrationTest/java/com/example/CustomIntegration.java" not in relative_files
     assert "src/e2e/kotlin/com/example/E2eScenario.kt" in relative_files
+    assert repo.exclude_tests is False
+    assert repo.exclude_dirs == ["integrationTest"]
 
 
 def test_ingest_multi_detection_ignores_language_only_in_custom_exclusion(

@@ -31,6 +31,8 @@ class IngestedRepo:
     language: str | None = None
     languages: list[str] = field(default_factory=list)
     versions: list[str] = field(default_factory=list)
+    exclude_tests: bool = True
+    exclude_dirs: list[str] = field(default_factory=list)
 
     def cleanup(self) -> None:
         """Remove temporary directory if applicable."""
@@ -457,4 +459,6 @@ def _build_ingested_repo(
         language=primary,
         languages=languages,
         versions=versions,
+        exclude_tests=exclude_tests,
+        exclude_dirs=["/".join(parts) for parts in exclude_dirs],
     )

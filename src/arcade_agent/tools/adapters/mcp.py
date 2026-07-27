@@ -79,6 +79,10 @@ def _make_summary(obj: Any, label: str) -> dict:
         langs = getattr(obj, "languages")
         if langs:
             summary["languages"] = list(langs)
+    if hasattr(obj, "exclude_tests"):
+        summary["exclude_tests"] = bool(obj.exclude_tests)
+    if hasattr(obj, "exclude_dirs"):
+        summary["exclude_dirs"] = list(obj.exclude_dirs)
     metadata = getattr(obj, "metadata", None) if hasattr(obj, "num_entities") else None
     if isinstance(metadata, dict) and metadata:
         # Agents never see log lines; surface parse notes such as polyglot
@@ -119,8 +123,10 @@ def _resolve_parse_source(
     """Resolve an ingest session into the concrete inputs required by parse.
 
     MCP clients should not need to discover a temporary clone path or repeat the
-    language/file selection already made by ``ingest``. Explicit parse arguments
-    still take precedence when a caller intentionally wants a narrower parse.
+    language/file selection already made by ``ingest``. The ingest session's
+    selected files are explicit and therefore are not re-filtered by parse-level
+    exclusion options. Explicit parse arguments still take precedence when a
+    caller intentionally wants a narrower parse.
     """
     if source_path not in _session:
         return source_path, language, languages, files
@@ -174,6 +180,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             "Source discovery excludes test/vendor/build directories by default; "
             "set exclude_tests=false when those files are intentionally in scope, "
             "or pass project-relative exclude_dirs for custom layouts. "
+            "Configure exclusions on ingest when chaining ingest to parse because "
+            "the ingest session carries an already-selected explicit file list. "
             "Cross-language edges are only linked within a language family "
             "(java+kotlin today); other language pairs are parsed and merged "
             "but never linked to each other."
@@ -252,17 +260,22 @@ def _build_server():  # type: ignore[no-untyped-def]
         Args:
             source_path: Root directory of the project, or a session ID returned by
                 ingest. An ingest session carries its selected files and languages
-                into this parse call unless explicitly overridden.
+                into this parse call unless explicitly overridden. Its files are
+                not re-filtered by parse-level exclusion options.
             language: Language to parse (java, python, c, typescript, go, kotlin),
                 or "multi" to parse every detected language and relink
                 cross-language edges.
             languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).
                 Mutually exclusive with language.
-            files: Specific files to parse. Discovers all if None.
+            files: Specific files to parse. An explicit list is authoritative.
+                Discovers automatically only when neither files nor an ingest
+                session supplies a list.
             exclude_tests: Exclude test/vendor/build directories during automatic
-                discovery (default True). Explicit files are always honored.
+                discovery (default True). When source_path is an ingest session,
+                configure this on ingest instead.
             exclude_dirs: Additional exact project-relative directories to exclude
-                during automatic discovery.
+                during automatic discovery. When source_path is an ingest session,
+                configure these on ingest instead.
             use_cache: Return cached results when source files haven't changed.
             max_tokens: Optional token budget for the response.
         """

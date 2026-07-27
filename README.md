@@ -232,6 +232,11 @@ Agent: call parse(source_path="p1q2r3")
        → {session_id: "a1b2c3", num_entities: 420, num_edges: 960, ...}
 ```
 
+An ingest session carries an already-selected explicit file list. Therefore,
+`exclude_tests` and `exclude_dirs` on a subsequent `parse` call do not re-filter
+that session. Configure exclusions on `ingest`, or pass your own authoritative
+`files=[...]` list to `parse`.
+
 For a repository with non-standard test locations:
 
 ```

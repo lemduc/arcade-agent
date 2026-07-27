@@ -209,6 +209,41 @@ class TestMcpMultilangE2E:
             "com.example.ProductionSupport",
         }
 
+    def test_parse_exclusions_do_not_refilter_ingest_session(
+        self,
+        server,
+        jvm_project_with_custom_layout: Path,
+    ):
+        ingest_result = _call(
+            server,
+            "ingest",
+            {
+                "source": str(jvm_project_with_custom_layout),
+                "languages": ["java", "kotlin"],
+            },
+        )
+        assert ingest_result["exclude_tests"] is True
+        assert ingest_result["exclude_dirs"] == []
+
+        parse_result = _call(
+            server,
+            "parse",
+            {
+                "source_path": ingest_result["session_id"],
+                "exclude_dirs": ["integrationTest", "src/e2e"],
+                "use_cache": False,
+            },
+        )
+        full = _call(
+            server,
+            "get_full_result",
+            {"session_id": parse_result["session_id"]},
+        )
+
+        # The ingest session supplies an authoritative explicit file list.
+        assert "com.example.CustomIntegration" in full["data"]["entities"]
+        assert "com.example.E2eScenario" in full["data"]["entities"]
+
     def test_parse_rejects_non_ingest_source_session(self, server):
         from mcp.server.fastmcp.exceptions import ToolError
 
