@@ -1,5 +1,139 @@
-"""Backward-compatible exports for the tool registry."""
+"""Tool registry and discovery."""
 
-from arcade_agent.tooling.registry import ToolDef, get_tool, list_tools, tool
+import inspect
+from dataclasses import dataclass, field
+from typing import Any, Callable, ParamSpec, TypeVar, get_type_hints
 
-__all__ = ["ToolDef", "get_tool", "list_tools", "tool"]
+P = ParamSpec("P")
+R = TypeVar("R")
+ToolCallable = Callable[..., Any]
+JsonSchema = dict[str, Any]
+
+_TOOLS: dict[str, "ToolDef"] = {}
+
+
+@dataclass
+class ToolDef:
+    """Definition of a registered tool."""
+
+    name: str
+    description: str
+    fn: ToolCallable
+    input_schema: JsonSchema = field(default_factory=dict)
+    output_schema: JsonSchema = field(default_factory=dict)
+    is_async: bool = False
+
+
+def tool(
+    name: str,
+    description: str,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Decorator to register a function as a tool."""
+
+    def decorator(fn: Callable[P, R]) -> Callable[P, R]:
+        _TOOLS[name] = ToolDef(
+            name=name,
+            description=description,
+            fn=fn,
+            input_schema=_schema_from_hints(fn),
+            output_schema=_schema_from_return(fn),
+            is_async=inspect.iscoroutinefunction(fn),
+        )
+        return fn
+
+    return decorator
+
+
+def get_tool(name: str) -> ToolDef:
+    """Get a registered tool by name."""
+    if name not in _TOOLS:
+        raise KeyError(f"Tool '{name}' not found. Available: {list(_TOOLS.keys())}")
+    return _TOOLS[name]
+
+
+def list_tools() -> list[ToolDef]:
+    """List all registered tools."""
+    return list(_TOOLS.values())
+
+
+_PYTHON_TYPE_TO_JSON: dict[type[Any], str] = {
+    str: "string",
+    int: "integer",
+    float: "number",
+    bool: "boolean",
+    list: "array",
+    dict: "object",
+}
+
+
+def _type_to_json_schema(tp: Any) -> JsonSchema:
+    """Convert a Python type hint to a JSON schema fragment."""
+    origin = getattr(tp, "__origin__", None)
+
+    if tp in _PYTHON_TYPE_TO_JSON:
+        return {"type": _PYTHON_TYPE_TO_JSON[tp]}
+
+    if origin is list:
+        args = getattr(tp, "__args__", ())
+        items = _type_to_json_schema(args[0]) if args else {}
+        return {"type": "array", "items": items}
+
+    if origin is dict:
+        return {"type": "object"}
+
+    # Union types (e.g., str | None)
+    if origin is type(str | None):
+        args = getattr(tp, "__args__", ())
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            schema = _type_to_json_schema(non_none[0])
+            schema["nullable"] = True
+            return schema
+
+    return {"type": "object", "description": str(tp)}
+
+
+def _schema_from_hints(fn: ToolCallable) -> JsonSchema:
+    """Extract JSON schema for function parameters from type hints."""
+    try:
+        hints = get_type_hints(fn)
+    except Exception:
+        return {}
+
+    sig = inspect.signature(fn)
+    properties: dict[str, Any] = {}
+    required: list[str] = []
+
+    for param_name, param in sig.parameters.items():
+        if param_name in ("self", "cls"):
+            continue
+        if param_name == "return":
+            continue
+
+        tp = hints.get(param_name, str)
+        prop = _type_to_json_schema(tp)
+
+        if param.default is inspect.Parameter.empty:
+            required.append(param_name)
+        else:
+            prop["default"] = param.default
+
+        properties[param_name] = prop
+
+    schema: dict[str, Any] = {"type": "object", "properties": properties}
+    if required:
+        schema["required"] = required
+    return schema
+
+
+def _schema_from_return(fn: ToolCallable) -> JsonSchema:
+    """Extract JSON schema for function return type."""
+    try:
+        hints = get_type_hints(fn)
+    except Exception:
+        return {}
+
+    ret = hints.get("return")
+    if ret is None:
+        return {}
+    return _type_to_json_schema(ret)

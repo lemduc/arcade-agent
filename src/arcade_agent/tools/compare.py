@@ -2,7 +2,7 @@
 
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.matching import compute_a2a_similarity, match_components
-from arcade_agent.tooling.registry import tool
+from arcade_agent.tools.registry import tool
 
 
 @tool(

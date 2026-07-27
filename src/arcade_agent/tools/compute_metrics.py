@@ -4,7 +4,7 @@ from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.coupling import compute_all_metrics
 from arcade_agent.algorithms.metrics import MetricResult
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tooling.registry import tool
+from arcade_agent.tools.registry import tool
 
 
 @tool(

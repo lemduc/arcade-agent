@@ -4,8 +4,8 @@ from typing import Any
 
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tooling.registry import tool
 from arcade_agent.tools.find_relevant import _score_entity, _tokenize
+from arcade_agent.tools.registry import tool
 
 # Roles, ordered from strongest (kept when an entity qualifies for several).
 ROLE_DIRECT = "direct match"

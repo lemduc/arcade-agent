@@ -11,7 +11,7 @@ from arcade_agent.exporters.json import export_json
 from arcade_agent.exporters.mermaid import build_mermaid_diagram
 from arcade_agent.exporters.rsf import export_rsf
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tooling.registry import tool
+from arcade_agent.tools.registry import tool
 
 
 @tool(

@@ -1,7 +1,7 @@
 """Tool adapter and compatibility exports for source ingestion."""
 
 from arcade_agent.source.ingest import IngestedRepo, ingest
-from arcade_agent.tooling.registry import tool
+from arcade_agent.tools.registry import tool
 
 tool(
     name="ingest",

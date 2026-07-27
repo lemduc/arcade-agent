@@ -10,7 +10,7 @@ from arcade_agent.algorithms.concern import (
 from arcade_agent.algorithms.cycles import detect_dependency_cycles
 from arcade_agent.algorithms.smells import SmellInstance, SmellType
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tooling.registry import tool
+from arcade_agent.tools.registry import tool
 
 
 @tool(

@@ -5,7 +5,7 @@ from arcade_agent.source.parse import (
     detect_languages_from_files,
     parse,
 )
-from arcade_agent.tooling.registry import tool
+from arcade_agent.tools.registry import tool
 
 tool(
     name="parse",

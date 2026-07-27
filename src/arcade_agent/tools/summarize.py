@@ -4,8 +4,8 @@ from collections import Counter
 from pathlib import Path
 
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tooling.registry import tool
 from arcade_agent.tools.parse import parse
+from arcade_agent.tools.registry import tool
 
 # Heuristic patterns for identifying entry points
 _ENTRY_POINT_PATTERNS = {

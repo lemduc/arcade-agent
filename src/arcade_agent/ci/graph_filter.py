@@ -32,9 +32,12 @@ def _filter_non_architectural_entities(
         if edge.source not in kept_entities or edge.target not in kept_entities:
             continue
 
+        source_entity = kept_entities[edge.source]
         target_entity = kept_entities[edge.target]
         if (
             edge.relation == "import"
+            and source_entity.package
+            and source_entity.package == target_entity.package
             and target_entity.kind == "function"
             and target_entity.name in registration_helpers
         ):
