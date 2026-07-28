@@ -307,7 +307,9 @@ def test_workflow_is_manual_and_rotating_not_per_pull_request():
     assert "fail-fast: false" in workflow
     assert "timeout-minutes: ${{ matrix.job_timeout_minutes }}" in workflow
     assert "python -m pip install \".[languages]\"" in workflow
-    assert "actions/upload-artifact@v4" in workflow
+    assert "actions/checkout@v7" in workflow
+    assert "actions/setup-python@v7" in workflow
+    assert "actions/upload-artifact@v7" in workflow
     assert "if: always()" in workflow
     assert "run-name:" in workflow
     assert "campaign-title:" in workflow
