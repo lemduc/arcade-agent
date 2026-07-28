@@ -80,7 +80,7 @@ def test_components_added_removed_renamed_are_rendered() -> None:
         "renamed": [{"from": "util", "to": "common"}],
         "stable": [], "split": [], "merged": [],
     }))
-    assert "### Components" in out
+    assert "### Component changes" in out
     assert "- added `parsers.kotlin`" in out
     assert "- removed `legacy_io`" in out
     assert "- renamed `util` → `common`" in out
@@ -136,6 +136,25 @@ def test_include_smells_false_omits_the_smells_section() -> None:
     out = render_changelog_markdown(changelog, include_smells=False)
     assert "### Smells" not in out
     assert "BDC" not in out
+
+
+def test_include_metrics_false_omits_the_metrics_section() -> None:
+    """arch_diff prints its own metric table; the changelog must not duplicate it."""
+    changelog = _changelog(
+        metrics={"RCI": {"a": 0.30, "b": 0.44, "delta": 0.14}}
+    )
+    out = render_changelog_markdown(changelog, include_metrics=False)
+    assert "### Metrics" not in out
+    assert "RCI" not in out
+
+
+def test_metrics_are_included_by_default() -> None:
+    changelog = _changelog(
+        metrics={"RCI": {"a": 0.30, "b": 0.44, "delta": 0.14}}
+    )
+    out = render_changelog_markdown(changelog)
+    assert "### Metrics" in out
+    assert "RCI" in out
 
 
 def test_metric_delta_is_rendered_with_sign() -> None:

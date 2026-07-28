@@ -22,6 +22,7 @@ def render_changelog_markdown(
     changelog: dict[str, Any],
     *,
     include_smells: bool = True,
+    include_metrics: bool = True,
     heading_level: int = 2,
 ) -> str:
     """Render a changelog_architecture result as markdown.
@@ -37,8 +38,13 @@ def render_changelog_markdown(
             pass False to avoid a duplicate, differently-formatted section
             and a "new" label that a reader could mistake for a live
             regression rather than an artefact of an empty baseline.
+        include_metrics: Whether to render the "Metrics" section. Callers that
+            already print their own metric table (e.g. one showing every
+            metric with a baseline value, not only those that moved) should
+            pass False. The metric deltas remain in the changelog dict either
+            way, for callers that consume it as data rather than prose.
         heading_level: Number of ``#`` characters for this changelog's own
-            heading; its subsections (Split, Merged, Components, …) render
+            heading; its subsections (Split, Merged, Component changes, …) render
             one level deeper. Callers embedding this output inside a larger
             report should pass the level that keeps the changelog's
             subsections from out-ranking sections of the outer report (e.g.
@@ -99,7 +105,7 @@ def render_changelog_markdown(
         body.append("")
 
     if components["added"] or components["removed"] or components["renamed"]:
-        body.append(f"{sub_heading} Components")
+        body.append(f"{sub_heading} Component changes")
         body.append("")
         for name in components["added"]:
             body.append(f"- added `{name}`")
@@ -136,7 +142,7 @@ def render_changelog_markdown(
         for name, entry in metrics.items()
         if entry.get("delta") not in (None, 0)
     }
-    if moved_metrics:
+    if include_metrics and moved_metrics:
         body.append(f"{sub_heading} Metrics")
         body.append("")
         body.append("| Metric | Before | After | Delta |")

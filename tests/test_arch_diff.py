@@ -235,7 +235,7 @@ def test_update_baseline(sample_arch, tmp_path):
     baseline_path = tmp_path / ".arcade" / "baseline.json"
     save_architecture(sample_arch, baseline_path)
 
-    loaded = load_architecture(baseline_path)
+    loaded, _ = load_architecture(baseline_path)
     assert len(loaded.components) == 2
     assert loaded.algorithm == "pkg"
 
@@ -259,9 +259,11 @@ def test_main_update_baseline(tmp_path, monkeypatch):
     ])
 
     assert baseline_path.exists()
-    loaded = load_architecture(baseline_path)
+    loaded, bl_metrics = load_architecture(baseline_path)
     assert loaded.algorithm == "pkg"
     assert len(loaded.components) >= 1
+    # Metrics are persisted for future drift deltas
+    assert "RCI" in bl_metrics
 
 
 def test_report_includes_the_architectural_changelog(tmp_path):
@@ -290,6 +292,15 @@ def test_report_includes_the_architectural_changelog(tmp_path):
     )
     assert "Architectural changes" in report
     assert "authz" in report
+    # The changelog supersedes the old hand-rolled "### Changes" block, which
+    # read the removed possible_splits/possible_merges keys and derived names
+    # from the Hungarian `matches` list.
+    assert "### Changes" not in report
+    # arch_diff owns the metric table and the Smells section; the changelog
+    # must not render a second copy of either.
+    assert report.count("### Drift from Baseline") == 1
+    assert "#### Metrics" not in report
+    assert "#### Smells" not in report
 
 
 def test_arch_diff_exits_zero_even_when_drift_is_detected(tmp_path):

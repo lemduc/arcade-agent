@@ -36,7 +36,7 @@ def arch():
 def test_save_load_roundtrip(arch, tmp_path):
     path = tmp_path / "baseline.json"
     save_architecture(arch, path)
-    loaded = load_architecture(path)
+    loaded, bl_metrics = load_architecture(path)
 
     assert loaded.algorithm == arch.algorithm
     assert loaded.rationale == arch.rationale
@@ -45,6 +45,7 @@ def test_save_load_roundtrip(arch, tmp_path):
         assert loaded_c.name == orig.name
         assert loaded_c.responsibility == orig.responsibility
         assert loaded_c.entities == orig.entities
+    assert bl_metrics == {}
 
 
 def test_load_nonexistent(tmp_path):
@@ -56,18 +57,28 @@ def test_save_creates_directory(arch, tmp_path):
     path = tmp_path / "nested" / "deep" / "baseline.json"
     save_architecture(arch, path)
     assert path.exists()
-    loaded = load_architecture(path)
+    loaded, _ = load_architecture(path)
     assert len(loaded.components) == 2
 
 
 def test_roundtrip_preserves_metadata(arch, tmp_path):
     path = tmp_path / "baseline.json"
     save_architecture(arch, path)
-    loaded = load_architecture(path)
+    loaded, _ = load_architecture(path)
 
     assert loaded.metadata == {"depth": 2, "version": "1.0"}
     assert loaded.algorithm == "pkg"
     assert loaded.rationale == "Package-based grouping"
+
+
+def test_save_load_with_metrics(arch, tmp_path):
+    path = tmp_path / "baseline.json"
+    metrics = {"RCI": 0.95, "TurboMQ": 0.42, "ComponentBalance": 0.7}
+    save_architecture(arch, path, metrics=metrics)
+    loaded, bl_metrics = load_architecture(path)
+
+    assert bl_metrics == metrics
+    assert loaded.algorithm == arch.algorithm
 
 
 # ---------------------------------------------------------------------------
