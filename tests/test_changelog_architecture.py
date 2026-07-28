@@ -61,6 +61,27 @@ def test_smell_survives_a_rename_without_spurious_churn():
     assert len(result["smells"]["persisting"]) == 1
 
 
+def test_smell_on_a_split_component_is_reported_as_resolved_and_new():
+    # auth (6 entities) splits into auth (3) + authz (3), mirroring
+    # test_reports_structural_changes. A split source has no unambiguous
+    # target to normalise onto, so a smell attached to it must NOT be
+    # treated as persisting: the old-name smell is resolved, and an
+    # equivalent smell on either split product is new.
+    arch_a = _arch(auth=["a.A", "a.B", "a.C", "z.X", "z.Y", "z.Z"])
+    arch_b = _arch(auth=["a.A", "a.B", "a.C"], authz=["z.X", "z.Y", "z.Z"])
+    smell_a = SmellInstance(smell_type="BDC", severity="high", affected_components=["auth"])
+    smell_b = SmellInstance(smell_type="BDC", severity="high", affected_components=["authz"])
+    result = changelog_architecture(
+        arch_a, _empty_graph(), arch_b, _empty_graph(),
+        smells_a=[smell_a], smells_b=[smell_b], metrics_a=[], metrics_b=[],
+    )
+    assert [s["smell_type"] for s in result["smells"]["resolved"]] == ["BDC"]
+    assert result["smells"]["resolved"][0]["affected_components"] == ["auth"]
+    assert [s["smell_type"] for s in result["smells"]["new"]] == ["BDC"]
+    assert result["smells"]["new"][0]["affected_components"] == ["authz"]
+    assert result["smells"]["persisting"] == []
+
+
 def test_new_and_resolved_smells_are_reported():
     arch = _arch(auth=["a.1", "a.2", "a.3"])
     gone = SmellInstance(smell_type="BCO", severity="low", affected_components=["auth"])

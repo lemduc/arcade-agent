@@ -1,5 +1,7 @@
 """Tool: architectural changelog between two versions of a codebase."""
 
+from typing import Any
+
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.metrics import MetricResult
 from arcade_agent.algorithms.provenance import (
@@ -23,7 +25,7 @@ def _smell_key(
     return smell.smell_type, tuple(sorted(components))
 
 
-def _smell_dict(smell: SmellInstance) -> dict:
+def _smell_dict(smell: SmellInstance) -> dict[str, Any]:
     """Compact serialisable view of a smell."""
     return {
         "smell_type": smell.smell_type,
@@ -38,7 +40,7 @@ def _languages(graph: DependencyGraph) -> list[str]:
     return sorted({e.language for e in graph.entities.values() if e.language})
 
 
-def _structural_dict(changes: StructuralChanges) -> dict:
+def _structural_dict(changes: StructuralChanges) -> dict[str, Any]:
     """Serialise the structural buckets."""
     return {
         "added": list(changes.added),
@@ -76,7 +78,7 @@ def changelog_architecture(
     ref_b: str | None = None,
     min_entities: int = 3,
     min_share: float = 0.20,
-) -> dict:
+) -> dict[str, Any]:
     """Build an architectural changelog between two recovered architectures.
 
     Args:
@@ -130,7 +132,7 @@ def changelog_architecture(
 
     values_a = {m.name: m.value for m in metrics_a}
     values_b = {m.name: m.value for m in metrics_b}
-    metrics: dict[str, dict] = {}
+    metrics: dict[str, dict[str, Any]] = {}
     for name in sorted(set(values_a) | set(values_b)):
         a_value = values_a.get(name)
         b_value = values_b.get(name)
