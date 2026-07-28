@@ -1649,16 +1649,19 @@ def test_changelog_between_real_releases():
         assert result["summary"]["entities_b"] > result["summary"]["entities_a"]
         assert result["refs"] == {"a": "v0.1.1", "b": "v0.2.0"}
 
-        # Every component appears in exactly one bucket per side.
+        # The six top-level buckets classify every arch_b component exactly once.
+        # Split.targets / Merge.sources are provenance detail and may name a
+        # component classified elsewhere, so they are excluded from this check.
         components = result["components"]
-        b_side = (
-            set(components["added"])
-            | {m["into"] for m in components["merged"]}
-            | {e["to"] for e in components["renamed"]}
-            | set(components["stable"])
-            | {t for s in components["split"] for t in s["into"]}
+        classified = (
+            list(components["added"])
+            + [m["into"] for m in components["merged"]]
+            + [e["to"] for e in components["renamed"]]
+            + list(components["stable"])
+            + [t for s in components["split"] for t in s["into"]]
         )
-        assert len(b_side) == len(arch_b.components)
+        names_b = {c.name for c in arch_b.components}
+        assert set(classified) == names_b, "every component must be classified"
     finally:
         repo_a.cleanup()
         repo_b.cleanup()

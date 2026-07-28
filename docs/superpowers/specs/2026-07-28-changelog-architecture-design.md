@@ -105,16 +105,28 @@ The repo is pre-1.0 and `compare`'s only in-tree consumer is `ci/arch_diff.py`.
     **split source** is a *product of that split*. It is reported only inside that
     split entry, never as `renamed`, `stable` or `added`.
 
-  With those rules the buckets **partition** `arch_a`'s components into
-  `{removed, split, absorbed-into-a-merge, renamed, stable}` and `arch_b`'s into
-  `{added, merged, produced-by-a-split, renamed, stable}`. Every component of each
-  architecture appears in exactly one place in the output, and every structural event
-  is reported exactly once. Split and rename are already mutually exclusive by
-  construction (≥2 outgoing flows vs exactly 1).
+  With those rules **the six top-level buckets partition the components**: each
+  component of `arch_a` is classified into exactly one of
+  `{removed, split, renamed, stable}` or is absorbed into a merge, and each component
+  of `arch_b` into exactly one of `{added, merged, renamed, stable}` or is a split
+  product. Split and rename are mutually exclusive by construction (≥2 outgoing flows
+  vs exactly 1).
 
-  A component may legitimately be a split source on the `arch_a` side while a
-  different component is a merge target on the `arch_b` side; these are separate
-  events and both are reported.
+  **`Split.targets` and `Merge.sources` are descriptive provenance, not
+  classification**, and may name a component that is classified elsewhere. This is
+  intentional. Consider `S` splitting into `S` and `T`, where `T` independently also
+  absorbs an unrelated `X`:
+
+  ```
+  split:  S -> (S, T)
+  merged: T <- (S, X)
+  ```
+
+  `S` is named twice, and both statements are true — `S` did split, and `T` did draw
+  from both `S` and `X`. Suppressing `S` from `T`'s sources to force a stricter
+  partition would misreport where half of `T`'s entities came from, which is a worse
+  error than the double-naming. The classification is disjoint; the provenance detail
+  is not, and does not claim to be.
 
 - `src/arcade_agent/tools/compare.py` — classification replaced by
   `classify_structural_changes`. Return shape keeps `overall_similarity` and
