@@ -47,16 +47,34 @@ def render_changelog_markdown(changelog: dict[str, Any]) -> str:
         body.append("### Split")
         body.append("")
         for entry in components["split"]:
-            targets = ", ".join(f"`{t}` ({entry['entities'][t]})" for t in entry["into"])
-            body.append(f"- `{entry['from']}` split into {targets}")
+            source = entry["from"]
+            entities = entry["entities"]
+            kept = entities.get(source)
+            moved_parts = [
+                f"{entities[t]} to `{t}`" for t in entry["into"] if t != source
+            ]
+            segments = []
+            if kept is not None:
+                segments.append(f"kept {kept}")
+            if moved_parts:
+                segments.append(f"moved {', '.join(moved_parts)}")
+            body.append(f"- `{source}` split — {', '.join(segments)}")
         body.append("")
 
     if components["merged"]:
         body.append("### Merged")
         body.append("")
         for entry in components["merged"]:
-            sources = ", ".join(f"`{s}` ({entry['entities'][s]})" for s in entry["from"])
-            body.append(f"- `{entry['into']}` absorbed {sources}")
+            target = entry["into"]
+            entities = entry["entities"]
+            kept = entities.get(target)
+            absorbed_parts = [
+                f"{entities[s]} from `{s}`" for s in entry["from"] if s != target
+            ]
+            line = f"- `{target}` absorbed {', '.join(absorbed_parts)}"
+            if kept is not None:
+                line += f" (kept {kept} of its own)"
+            body.append(line)
         body.append("")
 
     if components["added"] or components["removed"] or components["renamed"]:
@@ -109,10 +127,14 @@ def render_changelog_markdown(changelog: dict[str, Any]) -> str:
         body.append("")
 
     languages = changelog.get("languages") or {}
-    if languages.get("a") != languages.get("b"):
+    lang_a = languages.get("a")
+    lang_b = languages.get("b")
+    if lang_a != lang_b:
+        a_str = ", ".join(f"`{lang}`" for lang in (lang_a or [])) or "(none)"
+        b_str = ", ".join(f"`{lang}`" for lang in (lang_b or [])) or "(none)"
         body.append(
-            f"> **Language set changed** — `{ref_a}`: {languages.get('a')}, "
-            f"`{ref_b}`: {languages.get('b')}. Comparisons across different "
+            f"> **Language set changed** — `{ref_a}`: {a_str}, "
+            f"`{ref_b}`: {b_str}. Comparisons across different "
             f"language sets are not like-for-like."
         )
         body.append("")

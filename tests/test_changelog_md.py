@@ -41,6 +41,70 @@ def test_split_is_rendered() -> None:
     }))
     assert "auth" in out and "authz" in out
     assert "split" in out.lower()
+    assert "`auth` split — kept 3, moved 3 to `authz`" in out
+
+
+def test_split_without_kept_omits_kept_clause() -> None:
+    out = render_changelog_markdown(_changelog(components={
+        "added": [], "removed": [], "renamed": [], "stable": [], "merged": [],
+        "split": [{"from": "auth", "into": ["authz", "session"],
+                   "entities": {"authz": 9, "session": 5}}],
+    }))
+    assert "`auth` split — moved 9 to `authz`, 5 to `session`" in out
+    assert "kept" not in out
+
+
+def test_merged_is_rendered() -> None:
+    out = render_changelog_markdown(_changelog(components={
+        "added": [], "removed": [], "renamed": [], "stable": [], "split": [],
+        "merged": [{"into": "core", "from": ["core", "util"],
+                    "entities": {"core": 31, "util": 6}}],
+    }))
+    assert "### Merged" in out
+    assert "`core` absorbed 6 from `util` (kept 31 of its own)" in out
+
+
+def test_merged_multi_source_without_kept() -> None:
+    out = render_changelog_markdown(_changelog(components={
+        "added": [], "removed": [], "renamed": [], "stable": [], "split": [],
+        "merged": [{"into": "core", "from": ["util", "legacy"],
+                    "entities": {"util": 6, "legacy": 3}}],
+    }))
+    assert "`core` absorbed 6 from `util`, 3 from `legacy`" in out
+    assert "kept" not in out
+
+
+def test_components_added_removed_renamed_are_rendered() -> None:
+    out = render_changelog_markdown(_changelog(components={
+        "added": ["parsers.kotlin"], "removed": ["legacy_io"],
+        "renamed": [{"from": "util", "to": "common"}],
+        "stable": [], "split": [], "merged": [],
+    }))
+    assert "### Components" in out
+    assert "- added `parsers.kotlin`" in out
+    assert "- removed `legacy_io`" in out
+    assert "- renamed `util` → `common`" in out
+
+
+def test_responsibility_shifts_are_rendered() -> None:
+    out = render_changelog_markdown(_changelog(
+        responsibility_shifts=[{"entity": "a.b.C", "from": "auth", "to": "api"}]
+    ))
+    assert "### Responsibility shifts (1)" in out
+    assert "- `a.b.C`: `auth` → `api`" in out
+
+
+def test_responsibility_shifts_truncate_at_twenty() -> None:
+    shifts = [
+        {"entity": f"a.b.E{i}", "from": "auth", "to": "api"} for i in range(25)
+    ]
+    out = render_changelog_markdown(_changelog(responsibility_shifts=shifts))
+    assert "### Responsibility shifts (25)" in out
+    for i in range(20):
+        assert f"a.b.E{i}" in out
+    for i in range(20, 25):
+        assert f"a.b.E{i}" not in out
+    assert "- …and 5 more" in out
 
 
 def test_new_smell_is_rendered() -> None:
@@ -58,6 +122,13 @@ def test_metric_delta_is_rendered_with_sign() -> None:
     ))
     assert "RCI" in out
     assert "+0.14" in out
+
+
+def test_metric_row_with_none_before_or_after_renders_em_dash() -> None:
+    out = render_changelog_markdown(_changelog(
+        metrics={"NewMetric": {"a": None, "b": 0.44, "delta": 0.44}}
+    ))
+    assert "| NewMetric | — | 0.44 | +0.44 |" in out
 
 
 def test_language_drift_is_surfaced() -> None:
