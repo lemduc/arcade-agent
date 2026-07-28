@@ -25,7 +25,7 @@ Give agents maximum understanding per token spent.
 Help agents understand *what changed* and *what matters* without reading full diffs.
 
 - [x] **9. `diff_impact` tool** — Given a set of changed files, map them to affected components, the downstream reverse-dependency closure, and potentially broken contracts (external callers of changed public entities).
-- [ ] **10. `changelog_architecture` tool** — Given two commits/tags, produce an architectural changelog: new/removed components, shifted responsibilities, new smells.
+- [x] **10. `changelog_architecture` tool** — Given two commits/tags, produce an architectural changelog: new/removed components, shifted responsibilities, new smells.
 - [ ] **11. `blame_component` tool** — Component-level ownership via git blame aggregation.
 
 ## Phase 4 — Smart Context Selection
@@ -60,7 +60,6 @@ Work everywhere agents work.
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1–9, 12, 13, 14, 15, 16a, 16a2, 17, 18 (MVP) | Phases 1–2 + TS/JS & Go & Kotlin parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface`, polyglot merge+relink |
-| **Now** | 10 | Architectural changelog |
-| **Next** | 11, 16b | Component ownership, Rust parser |
+| **Done** | 1–10, 12, 13, 14, 15, 16a, 16a2, 17, 18 (MVP) | Phases 1–2 + TS/JS & Go & Kotlin parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface`, polyglot merge+relink, `changelog_architecture` |
+| **Now** | 11, 16b | Component ownership, Rust parser |
 | **Then** | 19–22 | Ecosystem breadth (OpenAI / LangChain / Claude SDK / IDE) |

@@ -821,6 +821,50 @@ def _build_server():  # type: ignore[no-untyped-def]
         serialized = serialize_result(result)
         return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
 
+    # -- changelog_architecture ------------------------------------------------
+
+    @server.tool()
+    def changelog_architecture(
+        arch_a: str,
+        graph_a: str,
+        arch_b: str,
+        graph_b: str,
+        ref_a: str | None = None,
+        ref_b: str | None = None,
+        min_entities: int = 3,
+        min_share: float = 0.20,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Architectural changelog between two analysed versions of a codebase.
+
+        Args:
+            arch_a: Session ID from a 'recover' call on the earlier version.
+            graph_a: Session ID from a 'parse' call on the earlier version.
+            arch_b: Session ID from a 'recover' call on the later version.
+            graph_b: Session ID from a 'parse' call on the later version.
+            ref_a: Optional label for the earlier version (e.g. a tag).
+            ref_b: Optional label for the later version.
+            min_entities: Absolute significance threshold for a component flow.
+            min_share: Fractional significance threshold in (0, 1].
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.changelog_architecture import (
+            changelog_architecture as _changelog,
+        )
+
+        result = _changelog(
+            _resolve(arch_a, "Architecture"),
+            _resolve(graph_a, "DependencyGraph"),
+            _resolve(arch_b, "Architecture"),
+            _resolve(graph_b, "DependencyGraph"),
+            ref_a=ref_a,
+            ref_b=ref_b,
+            min_entities=min_entities,
+            min_share=min_share,
+        )
+        serialized = serialize_result(result)
+        return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
     # -- get_full_result -------------------------------------------------------
 
     @server.tool()
