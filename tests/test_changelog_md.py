@@ -124,11 +124,18 @@ def test_metric_delta_is_rendered_with_sign() -> None:
     assert "+0.14" in out
 
 
-def test_metric_row_with_none_before_or_after_renders_em_dash() -> None:
+def test_metric_row_with_none_before_renders_em_dash() -> None:
     out = render_changelog_markdown(_changelog(
         metrics={"NewMetric": {"a": None, "b": 0.44, "delta": 0.44}}
     ))
     assert "| NewMetric | — | 0.44 | +0.44 |" in out
+
+
+def test_metric_row_with_none_after_renders_em_dash() -> None:
+    out = render_changelog_markdown(_changelog(
+        metrics={"RetiredMetric": {"a": 0.44, "b": None, "delta": -0.44}}
+    ))
+    assert "| RetiredMetric | 0.44 | — | -0.44 |" in out
 
 
 def test_language_drift_is_surfaced() -> None:
@@ -136,6 +143,13 @@ def test_language_drift_is_surfaced() -> None:
         languages={"a": ["python"], "b": ["python", "kotlin"]}
     ))
     assert "kotlin" in out
+
+
+def test_language_drift_with_multiple_languages_per_side_has_semicolon_boundary() -> None:
+    out = render_changelog_markdown(_changelog(
+        languages={"a": ["python", "java"], "b": ["python", "kotlin"]}
+    ))
+    assert "`v1`: `python`, `java`; `v2`: `python`, `kotlin`" in out
 
 
 def test_output_is_deterministic() -> None:

@@ -133,7 +133,7 @@ def render_changelog_markdown(changelog: dict[str, Any]) -> str:
         a_str = ", ".join(f"`{lang}`" for lang in (lang_a or [])) or "(none)"
         b_str = ", ".join(f"`{lang}`" for lang in (lang_b or [])) or "(none)"
         body.append(
-            f"> **Language set changed** — `{ref_a}`: {a_str}, "
+            f"> **Language set changed** — `{ref_a}`: {a_str}; "
             f"`{ref_b}`: {b_str}. Comparisons across different "
             f"language sets are not like-for-like."
         )
