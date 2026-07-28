@@ -61,12 +61,14 @@ class Split:
     Attributes:
         source: Component name in the earlier architecture.
         targets: Sorted later component names that received its entities.
-        entities: Target component name -> number of entities received.
+        entities: Target component name -> number of entities received, sorted
+            by target component name. A tuple of pairs rather than a dict so
+            the frozen dataclass is genuinely immutable and hashable.
     """
 
     source: str
     targets: tuple[str, ...]
-    entities: dict[str, int]
+    entities: tuple[tuple[str, int], ...]
 
 
 @dataclass(frozen=True)
@@ -76,12 +78,14 @@ class Merge:
     Attributes:
         target: Component name in the later architecture.
         sources: Sorted earlier component names that contributed entities.
-        entities: Source component name -> number of entities contributed.
+        entities: Source component name -> number of entities contributed,
+            sorted by source component name. A tuple of pairs rather than a
+            dict so the frozen dataclass is genuinely immutable and hashable.
     """
 
     target: str
     sources: tuple[str, ...]
-    entities: dict[str, int]
+    entities: tuple[tuple[str, int], ...]
 
 
 @dataclass(frozen=True)
@@ -115,7 +119,7 @@ class StructuralChanges:
     merged: tuple[Merge, ...]
     stable: tuple[str, ...]
     flows: tuple[Flow, ...]
-    rename_map: dict[str, str]
+    rename_map: tuple[tuple[str, str], ...]
 
 
 def classify_structural_changes(
@@ -173,10 +177,10 @@ def classify_structural_changes(
         Split(
             source=name,
             targets=tuple(sorted(f.target for f in outgoing[name])),
-            entities={
-                f.target: len(f.entities)
+            entities=tuple(
+                (f.target, len(f.entities))
                 for f in sorted(outgoing[name], key=lambda f: f.target)
-            },
+            ),
         )
         for name in sorted(split_sources)
     )
@@ -184,10 +188,10 @@ def classify_structural_changes(
         Merge(
             target=name,
             sources=tuple(sorted(f.source for f in incoming[name])),
-            entities={
-                f.source: len(f.entities)
+            entities=tuple(
+                (f.source, len(f.entities))
                 for f in sorted(incoming[name], key=lambda f: f.source)
-            },
+            ),
         )
         for name in sorted(merge_targets)
     )
@@ -205,11 +209,11 @@ def classify_structural_changes(
     for name in sorted(outgoing):
         if name in split_sources or name in absorbed:
             continue
+        # A non-absorbed, non-split source has exactly one significant
+        # outgoing flow, and its target is guaranteed not to be a merge
+        # target (otherwise `name` would be in `absorbed`) -- so that
+        # target's incoming flows are exactly this one.
         target = outgoing[name][0].target
-        # A lone flow out of a split source makes the target a split product,
-        # already reported inside the split entry.
-        if len(incoming.get(target, [])) != 1:
-            continue
         if name == target:
             stable.append(name)
         else:
@@ -220,8 +224,8 @@ def classify_structural_changes(
     )
     added = tuple(c.name for c in arch_b.components if not incoming.get(c.name))
 
-    rename_map = {source: target for source, target in renamed}
-    rename_map.update({name: name for name in stable})
+    rename_pairs = list(renamed) + [(name, name) for name in stable]
+    rename_pairs.sort()
 
     return StructuralChanges(
         added=tuple(sorted(added)),
@@ -231,5 +235,5 @@ def classify_structural_changes(
         merged=merges,
         stable=tuple(stable),
         flows=flows,
-        rename_map=rename_map,
+        rename_map=tuple(rename_pairs),
     )

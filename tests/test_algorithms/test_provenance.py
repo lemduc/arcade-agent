@@ -71,7 +71,7 @@ def test_pure_rename():
     assert changes.renamed == (("util", "common"),)
     assert changes.added == ()
     assert changes.removed == ()
-    assert changes.rename_map == {"util": "common"}
+    assert changes.rename_map == (("util", "common"),)
 
 
 def test_clean_split_does_not_also_report_an_addition():
@@ -80,7 +80,7 @@ def test_clean_split_does_not_also_report_an_addition():
     changes = classify_structural_changes(arch_a, arch_b)
     assert changes.split == (
         Split(source="auth", targets=("auth", "authz"),
-              entities={"auth": 3, "authz": 3}),
+              entities=(("auth", 3), ("authz", 3))),
     )
     assert changes.added == ()
     assert changes.renamed == ()
@@ -92,7 +92,7 @@ def test_clean_merge_does_not_also_report_a_removal():
     changes = classify_structural_changes(arch_a, arch_b)
     assert changes.merged == (
         Merge(target="core", sources=("core", "util"),
-              entities={"core": 3, "util": 3}),
+              entities=(("core", 3), ("util", 3))),
     )
     assert changes.removed == ()
     assert changes.renamed == ()
@@ -194,10 +194,10 @@ def test_split_source_may_also_appear_in_a_merges_sources():
     changes = classify_structural_changes(arch_a, arch_b)
 
     assert changes.split == (
-        Split(source="S", targets=("S", "T"), entities={"S": 3, "T": 3}),
+        Split(source="S", targets=("S", "T"), entities=(("S", 3), ("T", 3))),
     )
     assert changes.merged == (
-        Merge(target="T", sources=("S", "X"), entities={"S": 3, "X": 3}),
+        Merge(target="T", sources=("S", "X"), entities=(("S", 3), ("X", 3))),
     )
     # The documented overlap: "S" names both a split source and a merge source.
     assert changes.split[0].source == "S"
