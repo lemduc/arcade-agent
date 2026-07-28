@@ -14,7 +14,12 @@
 ## Global Constraints
 
 - **Python 3.12+**, PEP 585 generics (`list[str]`, `str | None`). Never `typing.List`.
-- **Type hints on every function**, including return types. `mypy src/` must pass in strict mode.
+- **Type hints on every function**, including return types.
+- **mypy:** the repo has **220 pre-existing strict-mode errors across 33 files** at the
+  merge base (`b66ace4`) — `mypy src/` does **not** pass today and fixing that is out of
+  scope. The binding requirement is: **the files you create or modify must be
+  individually clean** (`mypy src/path/to/your_file.py` → "Success"), **and the
+  tree-wide total must not rise above 220**. Check both.
 - **`@dataclass` for domain objects.** Use `frozen=True` for the new value objects.
 - **Google-style docstrings** with `Args:` / `Returns:` / `Raises:`.
 - **Import order:** stdlib → third-party → local (`from arcade_agent.models.graph import ...`).
