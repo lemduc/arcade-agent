@@ -181,3 +181,46 @@ def test_invalid_min_share_raises():
 
     with pytest.raises(ValueError, match="min_share"):
         classify_structural_changes(Architecture(), Architecture(), min_share=0.0)
+
+
+def test_split_source_may_also_appear_in_a_merges_sources():
+    # S splits into (S, T); T also independently absorbs X. S is genuinely
+    # both a split source and one of T's merge sources -- Split.targets and
+    # Merge.sources are descriptive provenance, not classification, and may
+    # name a component that is itself classified elsewhere. See the
+    # StructuralChanges docstring for the ruling this test pins.
+    arch_a = _arch(S=["s1", "s2", "s3", "s4", "s5", "s6"], X=["x1", "x2", "x3"])
+    arch_b = _arch(S=["s1", "s2", "s3"], T=["s4", "s5", "s6", "x1", "x2", "x3"])
+    changes = classify_structural_changes(arch_a, arch_b)
+
+    assert changes.split == (
+        Split(source="S", targets=("S", "T"), entities={"S": 3, "T": 3}),
+    )
+    assert changes.merged == (
+        Merge(target="T", sources=("S", "X"), entities={"S": 3, "X": 3}),
+    )
+    # The documented overlap: "S" names both a split source and a merge source.
+    assert changes.split[0].source == "S"
+    assert "S" in changes.merged[0].sources
+
+    # The six top-level buckets still classify every component exactly once.
+    assert changes.removed == ()
+    assert changes.renamed == ()
+    assert changes.stable == ()
+    assert changes.added == ()
+
+    # arch_a: "S" is classified as a split source; "X" has no top-level
+    # bucket of its own -- it is absorbed into the merge (present only in
+    # Merge.sources), which is the documented resolution, not a bug.
+    assert "X" not in changes.removed
+    assert "X" not in changes.stable
+    assert all(s.source != "X" for s in changes.split)
+    assert any("X" in m.sources for m in changes.merged)
+
+    # arch_b: "T" is classified as a merge target. "S" (arch_b) has no
+    # top-level bucket of its own -- it is a split product (present only in
+    # Split.targets), the documented resolution for the other direction.
+    assert any(m.target == "T" for m in changes.merged)
+    assert "S" not in changes.added
+    assert all(m.target != "S" for m in changes.merged)
+    assert any("S" in s.targets for s in changes.split)

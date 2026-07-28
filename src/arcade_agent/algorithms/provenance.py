@@ -88,11 +88,24 @@ class Merge:
 class StructuralChanges:
     """Disjoint classification of components across two architectures.
 
-    Every component of the earlier architecture appears in exactly one of
-    ``removed``, ``split``, a ``merged`` entry's ``sources``, ``renamed`` or
-    ``stable``. Every component of the later architecture appears in exactly one
-    of ``added``, ``merged``, a ``split`` entry's ``targets``, ``renamed`` or
-    ``stable``.
+    The **classification** is the six top-level buckets, and it is disjoint:
+    every component of the earlier architecture is in exactly one of
+    ``removed``, ``split``, ``renamed`` or ``stable``, or is absorbed into a
+    ``merged`` entry. Every component of the later architecture is in exactly
+    one of ``added``, ``merged``, ``renamed`` or ``stable``, or is a split
+    product of a ``split`` entry.
+
+    ``Split.targets`` and ``Merge.sources`` are **descriptive provenance, not
+    classification**, and may legitimately name a component that is itself
+    classified elsewhere. For example, if ``S`` splits into ``S`` and ``T``,
+    and ``T`` separately also draws significant entities from an unrelated
+    ``X``, then ``T`` is a genuine merge target with ``sources=("S", "X")`` —
+    even though ``S`` is independently reported as a ``split`` entry's
+    ``source``. Suppressing ``S`` from ``T``'s sources to force a stricter
+    partition would misreport where half of ``T``'s entities came from, which
+    is worse than the double-naming. The one-bucket-per-component guarantee
+    applies to the six top-level fields only, not to the names nested inside
+    ``Split.targets`` / ``Merge.sources``.
     """
 
     added: tuple[str, ...]
