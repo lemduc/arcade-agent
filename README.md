@@ -11,6 +11,12 @@
 
 Docs: https://arcade-agent.dev
 
+Real-world and multi-repository acceptance cases:
+[`docs/real-world-case-catalog.md`](docs/real-world-case-catalog.md). Publish an
+independent report from the manual [Real-World Repository
+Analysis](https://github.com/lemduc/arcade-agent/actions/workflows/real-world-analysis.yml)
+workflow ([source](.github/workflows/real-world-analysis.yml)).
+
 Framework-agnostic tool library for software architecture analysis.
 
 Provides composable tools for parsing source code, recovering architecture, detecting architectural smells, computing quality metrics, and comparing versions. Works standalone or plugs into MCP, LangChain, or Claude SDK.

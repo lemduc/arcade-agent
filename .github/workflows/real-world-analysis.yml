@@ -1,0 +1,173 @@
+name: Real-World Repository Analysis
+run-name: >-
+  Real-world report · ${{ inputs.case || 'scheduled' }} ·
+  ${{ inputs['campaign-title'] || 'independent analysis' }}
+
+on:
+  # Temporary branch-only smoke trigger. Removed after the first run starts.
+  push:
+    branches:
+      - codex/real-world-ci-reports
+  workflow_dispatch:
+    inputs:
+      case:
+        description: Pinned repository case to run immediately.
+        required: true
+        type: choice
+        default: RW-L01
+        options:
+          - RW-L01
+          - RW-L02
+          - RW-L03
+          - RW-L04
+          - RW-L05
+          - RW-L06
+          - RW-L07
+          - RW-L08
+          - RW-L09
+          - all
+          - scheduled
+      skip-warm:
+        description: Skip the second warm-cache determinism run.
+        required: false
+        type: boolean
+        default: false
+      campaign-title:
+        description: Public report headline for this evidence run.
+        required: false
+        type: string
+        default: Independent Real-World Architecture Analysis
+      upstream-pr-url:
+        description: Optional upstream PR linked from the public CI report.
+        required: false
+        type: string
+  schedule:
+    # Rotate one pinned large repository per week. Manual runs remain immediate.
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-world-analysis-${{ github.event_name }}-${{ inputs.case || 'scheduled' }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Select pinned repository cases
+        id: matrix
+        env:
+          CASE_SELECTION: >-
+            ${{ github.event_name == 'push' && 'RW-L02' ||
+                github.event_name == 'schedule' && 'scheduled' || inputs.case }}
+        run: |
+          MATRIX=$(python scripts/run_real_world_case.py matrix --selection "${CASE_SELECTION}")
+          echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
+          echo "${MATRIX}"
+
+  analyze:
+    needs: prepare
+    runs-on: ubuntu-latest
+    # Leave checkout/install/artifact headroom beyond the runner's analysis timeout.
+    timeout-minutes: ${{ matrix.job_timeout_minutes }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    name: ${{ matrix.case_id }} / ${{ matrix.case_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install arcade-agent from source under review
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[languages]"
+
+      - name: Show runner capacity
+        run: |
+          python --version
+          git --version
+          df -h .
+
+      - name: Analyze pinned upstream snapshot
+        env:
+          CASE_ID: ${{ matrix.case_id }}
+          SKIP_WARM: >-
+            ${{ github.event_name == 'push' && true || inputs['skip-warm'] || false }}
+        run: |
+          ARGS=(
+            run
+            --case "${CASE_ID}"
+            --output-dir "real-world-results/${CASE_ID}"
+          )
+          if [ "${SKIP_WARM}" = "true" ]; then
+            ARGS+=(--skip-warm)
+          fi
+          python scripts/run_real_world_case.py "${ARGS[@]}"
+
+      - name: Publish public evidence report
+        if: always()
+        env:
+          CASE_ID: ${{ matrix.case_id }}
+          CAMPAIGN_TITLE: >-
+            ${{ inputs['campaign-title'] || 'Independent Real-World Architecture Analysis' }}
+          UPSTREAM_PR_URL: ${{ inputs['upstream-pr-url'] || '' }}
+          RUN_URL: >-
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          RESULT_DIR="real-world-results/${CASE_ID}"
+          RESULT="${RESULT_DIR}/result.json"
+          REPORT="${RESULT_DIR}/report.md"
+          SHARE_COMMENT="${RESULT_DIR}/share-comment.md"
+          if [ ! -f "${RESULT}" ]; then
+            mkdir -p "${RESULT_DIR}"
+            {
+              echo "# ${CAMPAIGN_TITLE}"
+              echo
+              echo "## ${CASE_ID} — infrastructure failure"
+              echo
+              echo "> The runner exited before result.json could be written."
+              echo
+              echo "Inspect the installation and job logs on the [public CI run](${RUN_URL})."
+            } > "${REPORT}"
+            cp "${REPORT}" "${SHARE_COMMENT}"
+            cat "${REPORT}" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          ARGS=(
+            report
+            --result "${RESULT}"
+            --output "${REPORT}"
+            --share-output "${SHARE_COMMENT}"
+            --run-url "${RUN_URL}"
+            --campaign-title "${CAMPAIGN_TITLE}"
+          )
+          if [ -n "${UPSTREAM_PR_URL}" ]; then
+            ARGS+=(--upstream-pr-url "${UPSTREAM_PR_URL}")
+          fi
+          python scripts/run_real_world_case.py "${ARGS[@]}"
+          cat "${REPORT}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload real-world evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-world-${{ matrix.case_id }}-${{ github.run_id }}
+          path: real-world-results/${{ matrix.case_id }}
+          retention-days: 90
+          if-no-files-found: warn
