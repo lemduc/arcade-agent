@@ -18,7 +18,9 @@ def _fmt_delta(delta: float | None) -> str:
     return f"{delta:+.2f}"
 
 
-def render_changelog_markdown(changelog: dict[str, Any]) -> str:
+def render_changelog_markdown(
+    changelog: dict[str, Any], *, include_smells: bool = True
+) -> str:
     """Render a changelog_architecture result as markdown.
 
     Empty sections are omitted. A changelog with no structural changes, smell
@@ -26,6 +28,12 @@ def render_changelog_markdown(changelog: dict[str, Any]) -> str:
 
     Args:
         changelog: The dict returned by changelog_architecture.
+        include_smells: Whether to render the "### Smells" section. Callers
+            that already print their own smells section elsewhere (e.g. a
+            report that lists all current smells, not just the delta) should
+            pass False to avoid a duplicate, differently-formatted section
+            and a "new" label that a reader could mistake for a live
+            regression rather than an artefact of an empty baseline.
 
     Returns:
         A markdown string suitable for a pull-request comment.
@@ -99,7 +107,7 @@ def render_changelog_markdown(changelog: dict[str, Any]) -> str:
             body.append(f"- …and {len(shifts) - 20} more")
         body.append("")
 
-    if smells["new"] or smells["resolved"]:
+    if include_smells and (smells["new"] or smells["resolved"]):
         body.append("### Smells")
         body.append("")
         for smell in smells["new"]:

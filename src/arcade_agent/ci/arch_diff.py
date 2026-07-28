@@ -97,7 +97,11 @@ def build_report(
 
         lines.append("")
 
-        # Architectural changelog (structural + smell + metric changes)
+        # Architectural changelog (structure + responsibility shifts + metrics).
+        # Smells are excluded here: the "### Smells" section below already
+        # covers them, and rendering both would duplicate the same fact in
+        # two formats and mislabel every smell "new" on the first run after
+        # a baseline is stored (smells_a is always [] — see the note above).
         changelog = changelog_architecture(
             baseline,
             graph,
@@ -110,8 +114,7 @@ def build_report(
             ref_a="baseline",
             ref_b="current",
         )
-        lines.append(render_changelog_markdown(changelog))
-        lines.append("")
+        lines.append(render_changelog_markdown(changelog, include_smells=False))
 
     # Smells section
     if smells:

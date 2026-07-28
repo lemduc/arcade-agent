@@ -2,9 +2,9 @@
 
 from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.metrics import MetricResult
-from arcade_agent.algorithms.smells import SmellInstance
+from arcade_agent.algorithms.smells import SmellInstance, SmellType
 from arcade_agent.parsers.graph import DependencyGraph
-from arcade_agent.tools.changelog_architecture import changelog_architecture
+from arcade_agent.tools.changelog_architecture import _smell_dict, changelog_architecture
 
 
 def _arch(**components: list[str]) -> Architecture:
@@ -92,6 +92,38 @@ def test_new_and_resolved_smells_are_reported():
     )
     assert [s["smell_type"] for s in result["smells"]["new"]] == ["BDC"]
     assert [s["smell_type"] for s in result["smells"]["resolved"]] == ["BCO"]
+
+
+def test_smell_dict_coerces_enum_smell_type_to_a_plain_string():
+    # SmellInstance.smell_type is annotated str but production callers
+    # (detect_smells) actually populate it with SmellType enum members.
+    # str(SmellType.DEPENDENCY_CYCLE) leaks as "SmellType.DEPENDENCY_CYCLE"
+    # (Enum.__str__ wins over the str mixin), so _smell_dict must coerce via
+    # .value the same way arch_diff.py's _display_value already does for the
+    # legacy report section. This dict is JSON-serialised on the MCP path,
+    # so the leak must be fixed at the source, not papered over by a renderer.
+    smell = SmellInstance(
+        smell_type=SmellType.DEPENDENCY_CYCLE,
+        severity="high",
+        affected_components=["auth"],
+    )
+    result = _smell_dict(smell)
+    assert result["smell_type"] == "Dependency Cycle"
+    assert isinstance(result["smell_type"], str)
+    assert "SmellType" not in result["smell_type"]
+
+
+def test_new_smell_with_enum_smell_type_does_not_leak_in_changelog_output():
+    arch_a = _arch(auth=["a.1", "a.2", "a.3"])
+    arch_b = _arch(auth=["a.1", "a.2", "a.3"])
+    fresh = SmellInstance(
+        smell_type=SmellType.DEPENDENCY_CYCLE, severity="high", affected_components=["auth"]
+    )
+    result = changelog_architecture(
+        arch_a, _empty_graph(), arch_b, _empty_graph(),
+        smells_a=[], smells_b=[fresh], metrics_a=[], metrics_b=[],
+    )
+    assert result["smells"]["new"][0]["smell_type"] == "Dependency Cycle"
 
 
 def test_metric_deltas():

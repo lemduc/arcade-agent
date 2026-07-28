@@ -116,6 +116,28 @@ def test_new_smell_is_rendered() -> None:
     assert "BDC" in out
 
 
+def test_new_smell_is_rendered_by_default() -> None:
+    changelog = _changelog(smells={
+        "new": [{"smell_type": "BDC", "severity": "high",
+                 "affected_components": ["core"], "description": "cycle"}],
+        "resolved": [], "persisting": [],
+    })
+    out = render_changelog_markdown(changelog)
+    assert "### Smells" in out
+    assert "BDC" in out
+
+
+def test_include_smells_false_omits_the_smells_section() -> None:
+    changelog = _changelog(smells={
+        "new": [{"smell_type": "BDC", "severity": "high",
+                 "affected_components": ["core"], "description": "cycle"}],
+        "resolved": [], "persisting": [],
+    })
+    out = render_changelog_markdown(changelog, include_smells=False)
+    assert "### Smells" not in out
+    assert "BDC" not in out
+
+
 def test_metric_delta_is_rendered_with_sign() -> None:
     out = render_changelog_markdown(_changelog(
         metrics={"RCI": {"a": 0.30, "b": 0.44, "delta": 0.14}}

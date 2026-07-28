@@ -25,10 +25,28 @@ def _smell_key(
     return smell.smell_type, tuple(sorted(components))
 
 
+def _display_value(value: Any) -> Any:
+    """Coerce an enum-like value to its plain scalar.
+
+    ``SmellInstance.smell_type`` is annotated ``str`` but actually holds
+    ``SmellType`` enum members, so ``str(member)`` would otherwise leak as
+    ``"SmellType.DEPENDENCY_CYCLE"`` in both rendered markdown and any JSON
+    serialisation of this dict.
+
+    Args:
+        value: A value that may be an enum member or already a plain scalar.
+
+    Returns:
+        ``value.value`` if *value* has a ``.value`` attribute (enum member),
+        otherwise *value* unchanged.
+    """
+    return value.value if hasattr(value, "value") else value
+
+
 def _smell_dict(smell: SmellInstance) -> dict[str, Any]:
     """Compact serialisable view of a smell."""
     return {
-        "smell_type": smell.smell_type,
+        "smell_type": _display_value(smell.smell_type),
         "severity": smell.severity,
         "affected_components": sorted(smell.affected_components),
         "description": smell.description,

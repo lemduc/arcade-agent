@@ -186,6 +186,50 @@ def test_diff_with_smells(sample_arch, sample_graph, sample_metrics):
     assert "Calc, Util" in report
 
 
+def test_diff_with_baseline_and_smells_has_one_smells_section_and_no_enum_leak(
+    sample_arch, sample_graph, sample_metrics
+):
+    """The changelog-sourced path must not duplicate or leak the smells section.
+
+    With a baseline present, build_report also runs changelog_architecture()
+    and renders its markdown. That renderer must not contribute its own
+    "### Smells" block (arch_diff passes include_smells=False so the
+    pre-existing, prettified section below keeps sole ownership of smells
+    and never mislabels a smell "new" purely because the baseline carries no
+    smell record), and the smell type must never leak as its raw enum repr
+    anywhere in the report, including the parts sourced from the changelog.
+    """
+    baseline = Architecture(
+        components=[
+            Component(name="Calc", responsibility="", entities=["com.example.calc.Calculator"]),
+            Component(name="Util", responsibility="", entities=["com.example.util.MathHelper"]),
+        ],
+        algorithm="pkg",
+    )
+    smells = [
+        SmellInstance(
+            smell_type=SmellType.DEPENDENCY_CYCLE,
+            severity="high",
+            affected_components=["Calc", "Util"],
+        ),
+    ]
+    drift = compare(baseline, sample_arch)
+
+    report = build_report(
+        current=sample_arch,
+        graph=sample_graph,
+        metrics=sample_metrics,
+        smells=smells,
+        drift=drift,
+        baseline=baseline,
+    )
+
+    assert report.count("### Smells") == 1
+    assert "### Smells (1)" in report
+    assert "SmellType.DEPENDENCY_CYCLE" not in report
+    assert "**new**" not in report
+
+
 def test_update_baseline(sample_arch, tmp_path):
     """--update-baseline writes the baseline file."""
     baseline_path = tmp_path / ".arcade" / "baseline.json"
