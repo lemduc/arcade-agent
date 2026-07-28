@@ -854,9 +854,36 @@ At the very top of the function body, before the existing `source_path = Path(so
         )
         repo.version = ref
         repo.is_temp = True
-        repo.path = extracted
+        repo.temp_root = extracted
         return repo
 ```
+
+**Do not overwrite `repo.path`.** `_build_ingested_repo` narrows `path` to the detected
+source root (`src/`, `src/main/java`, …), and the Python parser derives module FQNs from
+`file_path.relative_to(path)`. Overwriting it with the extraction root makes
+`ingest(ref=X)` emit `src.arcade_agent.…` where a plain `ingest()` of the same commit
+emits `arcade_agent.…` — which silently ruins any comparison between a ref ingest and a
+normally-ingested baseline, i.e. the CI path.
+
+Instead add a new optional field to `IngestedRepo` and use it for cleanup only:
+
+```python
+@dataclass
+class IngestedRepo:
+    path: Path                          # analysis root (may be narrowed)
+    ...
+    temp_root: Path | None = None       # dir to delete; None means use `path`
+
+    def cleanup(self) -> None:
+        """Remove the temporary directory if applicable."""
+        if self.is_temp:
+            target = self.temp_root or self.path
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
+```
+
+The field is optional with a `None` default, so existing construction sites and callers
+are unaffected.
 
 **Before writing this, read the existing local-ingest path in `ingest()` and use whatever the real internal function is called** — the file may name it differently from `_ingest_local`. Match the real signature; do not invent one. If the local path is inlined rather than factored into a helper, extract it into `_ingest_local` first as a behaviour-preserving refactor, run the full suite to confirm nothing broke, then use it here.
 
