@@ -1490,7 +1490,22 @@ git commit -m "feat(exporters): markdown renderer for the architectural changelo
 - [ ] **Step 1: Find every use of the removed keys**
 
 Run: `grep -n "possible_splits\|possible_merges" src/ tests/ -r`
-Expected: hits in `src/arcade_agent/ci/arch_diff.py` and possibly `tests/test_arch_diff.py`. Every one must go.
+
+There are **two** production consumers, not one:
+
+1. `src/arcade_agent/ci/arch_diff.py` (lines ~131-145) — indexes the keys directly, so it
+   raises `KeyError` after Task 3. Loud.
+2. `src/arcade_agent/ci/compare_baseline.py` (lines ~1044-1047 and ~1291-1294) — reads them
+   via `summary.get(...)`, so it does **not** crash; the "Possible Splits" / "Possible Merges"
+   rows just silently stop appearing. This is the worse failure of the two, because nothing
+   surfaces it. `compare_baseline.py:788` returns `compare(arch_a, arch_b)` and both call
+   sites read `a2a_result["summary"]`, so they are genuinely fed by the changed contract.
+   `arcade-compare-baseline` is a published console script (`pyproject.toml:61`).
+
+Both must be migrated to the new `splits` / `merges` keys. In `compare_baseline.py` keep the
+`.get(...)` style and the existing row labels, but drop the word "Possible" — the counts are
+now derived from entity provenance rather than a similarity guess, so "Splits" / "Merges" is
+the honest label. Update any test that asserts on those labels.
 
 - [ ] **Step 2: Update the failing test**
 
