@@ -137,9 +137,11 @@ The repo is pre-1.0 and `compare`'s only in-tree consumer is `ci/arch_diff.py`.
       ref_b: str | None = None,
       min_entities: int = 3,
       min_share: float = 0.20,
-      max_tokens: int | None = None,
   ) -> dict
   ```
+
+  No `max_tokens` on the tool itself: the house pattern applies the budget at the
+  MCP adapter layer via `_apply_budget`, exactly as `dependency_cone` does.
 
   Smells and metrics are optional so a caller that already computed them (as
   `arch_diff` does) does not pay twice.
@@ -197,8 +199,9 @@ entities came from). Values are entity counts along that flow.
 granularity, including moves along flows too small to be structurally significant.
 That is the point: sub-threshold drift is exactly what accumulates unnoticed.
 
-Follows the house MCP pattern — compact summary plus session ID, with progressive
-truncation via the existing `budget.py` when `max_tokens` is set.
+Follows the house MCP pattern — the adapter serialises the result and applies
+progressive truncation via the existing `budget.py` when the caller passes
+`max_tokens`.
 
 ### Smell identity across versions
 
