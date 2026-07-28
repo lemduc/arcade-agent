@@ -32,8 +32,9 @@ def test_reports_structural_changes():
         {"from": "auth", "into": ["auth", "authz"],
          "entities": {"auth": 3, "authz": 3}}
     ]
-    # note: _structural_dict converts Split.entities (a tuple of pairs) into a
-    # plain dict for the output, so the serialised shape stays dict-shaped.
+    # note: structural_dict (algorithms/provenance.py) converts Split.entities
+    # (a tuple of pairs) into a plain dict for the output, so the serialised
+    # shape stays dict-shaped.
     assert result["components"]["added"] == []
 
 
@@ -99,9 +100,10 @@ def test_smell_dict_coerces_enum_smell_type_to_a_plain_string():
     # (detect_smells) actually populate it with SmellType enum members.
     # str(SmellType.DEPENDENCY_CYCLE) leaks as "SmellType.DEPENDENCY_CYCLE"
     # (Enum.__str__ wins over the str mixin), so _smell_dict must coerce via
-    # .value the same way arch_diff.py's _display_value already does for the
-    # legacy report section. This dict is JSON-serialised on the MCP path,
-    # so the leak must be fixed at the source, not papered over by a renderer.
+    # .value the same way the shared arcade_agent.display.display_value
+    # already does for the legacy report section. This dict is
+    # JSON-serialised on the MCP path, so the leak must be fixed at the
+    # source, not papered over by a renderer.
     smell = SmellInstance(
         smell_type=SmellType.DEPENDENCY_CYCLE,
         severity="high",

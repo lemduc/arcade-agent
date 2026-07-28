@@ -177,3 +177,24 @@ def test_language_drift_with_multiple_languages_per_side_has_semicolon_boundary(
 def test_output_is_deterministic() -> None:
     changelog = _changelog()
     assert render_changelog_markdown(changelog) == render_changelog_markdown(changelog)
+
+
+def test_default_heading_level_is_h2() -> None:
+    out = render_changelog_markdown(_changelog())
+    assert out.startswith("## Architectural changes")
+    assert "\n### " not in out
+
+
+def test_heading_level_three_shifts_own_and_subsection_headings() -> None:
+    out = render_changelog_markdown(
+        _changelog(components={
+            "added": [], "removed": [], "renamed": [], "stable": [], "merged": [],
+            "split": [{"from": "auth", "into": ["auth", "authz"],
+                       "entities": {"auth": 3, "authz": 3}}],
+        }),
+        heading_level=3,
+    )
+    assert out.startswith("### Architectural changes")
+    assert "\n#### Split" in out
+    assert "\n### Split" not in out
+    assert "\n## " not in out

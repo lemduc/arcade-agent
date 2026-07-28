@@ -134,7 +134,7 @@ def test_diff_with_baseline(sample_arch, sample_graph, sample_metrics):
     assert "### Drift from Baseline" in report
     assert "Similarity" in report
     assert f"{drift['overall_similarity']:.2f}" in report
-    assert "No architectural changes." in report
+    assert "No architectural changes since the baseline." in report
 
 
 def test_diff_with_baseline_includes_balanced_scores(sample_arch, sample_graph, sample_metrics):
@@ -297,8 +297,13 @@ def test_arch_diff_exits_zero_even_when_drift_is_detected(tmp_path):
 
     Exercises the real console script so the guarantee is tested by
     behaviour, not by grepping the source for a particular spelling of exit.
+    Invoked as ``python -m arcade_agent.ci.arch_diff`` rather than the
+    ``arcade-arch-diff`` console-script entry point so the test passes
+    regardless of whether that entry point is on PATH (e.g. under
+    ``python -m pytest`` from an unactivated venv).
     """
     import subprocess
+    import sys
 
     repo = tmp_path / "proj"
     (repo / "pkg").mkdir(parents=True)
@@ -310,8 +315,8 @@ def test_arch_diff_exits_zero_even_when_drift_is_detected(tmp_path):
     # cwd is pinned to the throwaway repo so the default relative
     # ".arcade/baseline.json" path never touches this repo's own baseline.
     first = subprocess.run(
-        ["arcade-arch-diff", "--source", str(repo), "--language", "python",
-         "--update-baseline"],
+        [sys.executable, "-m", "arcade_agent.ci.arch_diff",
+         "--source", str(repo), "--language", "python", "--update-baseline"],
         capture_output=True,
         cwd=repo,
     )
@@ -319,7 +324,8 @@ def test_arch_diff_exits_zero_even_when_drift_is_detected(tmp_path):
 
     (repo / "pkg" / "c.py").write_text("from pkg.b import B\n\n\nclass C(B):\n    pass\n")
     second = subprocess.run(
-        ["arcade-arch-diff", "--source", str(repo), "--language", "python"],
+        [sys.executable, "-m", "arcade_agent.ci.arch_diff",
+         "--source", str(repo), "--language", "python"],
         capture_output=True,
         cwd=repo,
     )

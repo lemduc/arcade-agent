@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 from arcade_agent.algorithms.coupling import compute_balanced_scores
+from arcade_agent.display import display_value
 from arcade_agent.exporters.changelog_md import render_changelog_markdown
 from arcade_agent.serialization import load_architecture, save_architecture
 from arcade_agent.tools.changelog_architecture import changelog_architecture
@@ -114,7 +115,9 @@ def build_report(
             ref_a="baseline",
             ref_b="current",
         )
-        lines.append(render_changelog_markdown(changelog, include_smells=False))
+        lines.append(
+            render_changelog_markdown(changelog, include_smells=False, heading_level=3)
+        )
 
     # Smells section
     if smells:
@@ -122,7 +125,7 @@ def build_report(
         lines.append("")
         for smell in smells:
             affected = ", ".join(smell.affected_components) if smell.affected_components else ""
-            lines.append(f"- {_display_value(smell.smell_type)}: {affected}")
+            lines.append(f"- {display_value(smell.smell_type)}: {affected}")
         lines.append("")
     else:
         lines.append("### Smells")
@@ -155,11 +158,6 @@ def _delta(val: int | float) -> str:
     if isinstance(val, float):
         return f"+{val:.2f}" if val >= 0 else f"{val:.2f}"
     return f"+{val}" if val >= 0 else str(val)
-
-
-def _display_value(value) -> str:
-    """Display enum-like values without their enum class prefix."""
-    return str(value.value if hasattr(value, "value") else value)
 
 
 def main(argv: list[str] | None = None) -> None:

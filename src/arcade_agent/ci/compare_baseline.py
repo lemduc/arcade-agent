@@ -520,6 +520,10 @@ def _build_component_rows(
             })
         return rows
 
+    structural = (a2a_result or {}).get("structural") or {}
+    added_names = set(structural.get("added", []))
+    removed_names = set(structural.get("removed", []))
+
     matched_names: set[str] = set()
     if a2a_result:
         for match in a2a_result.get("matches", []):
@@ -549,6 +553,16 @@ def _build_component_rows(
                 matched_names.add(source_name)
                 matched_names.add(target_name)
             elif target_name:
+                # A Hungarian-unmatched target is only a genuine addition when
+                # the provenance-derived `structural` classification agrees --
+                # otherwise it is a split product or merge target, already
+                # accounted for elsewhere, and reporting it here too would
+                # contradict the structural add/remove counts (same class of
+                # bug as the "Components Added: 0" vs. "New components: X"
+                # inconsistency this replaces).
+                matched_names.add(target_name)
+                if target_name not in added_names:
+                    continue
                 target = current_map[target_name]
                 rows.append({
                     "status": "added",
@@ -559,8 +573,10 @@ def _build_component_rows(
                     "classes": f"0 → {_component_count(target, 'class_count')}",
                     "methods": f"0 → {_component_count(target, 'method_count')}",
                 })
-                matched_names.add(target_name)
             elif source_name:
+                matched_names.add(source_name)
+                if source_name not in removed_names:
+                    continue
                 source = baseline_map[source_name]
                 rows.append({
                     "status": "removed",
@@ -571,7 +587,6 @@ def _build_component_rows(
                     "classes": _component_metric_transition(source, None, "class_count"),
                     "methods": _component_metric_transition(source, None, "method_count"),
                 })
-                matched_names.add(source_name)
 
     for name, component in sorted(current_map.items()):
         if name not in matched_names:
@@ -1047,13 +1062,21 @@ def build_comment(
                 lines.append(f"| Merges | {summary['merges']} |")
             lines.append("")
 
-            # Component-level matches detail
+            # Component-level matches detail. "Matched" stays the raw Hungarian
+            # 1:1 view (similarity scoring). "New"/"Removed" use the
+            # provenance-derived `structural` classification -- not whichever
+            # side a Hungarian match left empty -- so this list always agrees
+            # with the "Components Added"/"Components Removed" counts above.
+            # A component with no source or target in `matches` but that is
+            # instead a split product or merge target does not appear in
+            # either list; it is reported via "Splits"/"Merges" above.
             matches = a2a_result.get("matches", [])
             matched = [m for m in matches if m.get("source") and m.get("target")]
-            added = [m for m in matches if not m.get("source")]
-            removed = [m for m in matches if not m.get("target")]
+            structural = a2a_result.get("structural") or {}
+            added_names = sorted(structural.get("added", []))
+            removed_names = sorted(structural.get("removed", []))
 
-            if matched or added or removed:
+            if matched or added_names or removed_names:
                 lines.append("<details><summary>Component matching details</summary>\n")
                 if matched:
                     lines.append("**Matched:**")
@@ -1064,14 +1087,14 @@ def build_comment(
                             f"| {m['source']} | {m['target']} | {m['similarity']:.4f} |"
                         )
                     lines.append("")
-                if added:
+                if added_names:
                     lines.append("**New components:** " + ", ".join(
-                        f"`{m['target']}`" for m in added
+                        f"`{name}`" for name in added_names
                     ))
                     lines.append("")
-                if removed:
+                if removed_names:
                     lines.append("**Removed components:** " + ", ".join(
-                        f"`{m['source']}`" for m in removed
+                        f"`{name}`" for name in removed_names
                     ))
                     lines.append("")
                 lines.append("</details>\n")

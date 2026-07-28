@@ -6,6 +6,7 @@ express. Used to classify splits and merges without double counting.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from arcade_agent.algorithms.architecture import Architecture
 
@@ -250,3 +251,36 @@ def classify_structural_changes(
         flows=flows,
         rename_map=tuple(rename_pairs),
     )
+
+
+def structural_dict(changes: StructuralChanges) -> dict[str, Any]:
+    """Serialise the structural buckets to plain, JSON-safe collections.
+
+    This is the single provenance-derived view of component identity: which
+    names are genuinely added, removed, renamed, split or merged. Both
+    ``tools/compare.py`` (as the additive ``structural`` key) and
+    ``tools/changelog_architecture.py`` (as the ``components`` key) render
+    this same shape so a consumer never sees two disagreeing accounts of the
+    same diff.
+
+    Args:
+        changes: The result of ``classify_structural_changes``.
+
+    Returns:
+        A dict with ``added``, ``removed``, ``renamed``, ``split``,
+        ``merged`` and ``stable`` keys.
+    """
+    return {
+        "added": list(changes.added),
+        "removed": list(changes.removed),
+        "renamed": [{"from": a, "to": b} for a, b in changes.renamed],
+        "split": [
+            {"from": s.source, "into": list(s.targets), "entities": dict(s.entities)}
+            for s in changes.split
+        ],
+        "merged": [
+            {"into": m.target, "from": list(m.sources), "entities": dict(m.entities)}
+            for m in changes.merged
+        ],
+        "stable": list(changes.stable),
+    }

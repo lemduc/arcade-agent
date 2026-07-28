@@ -1,8 +1,10 @@
 """Tool: Compare architectures across versions (A2A analysis)."""
 
+from typing import Any
+
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.matching import compute_a2a_similarity, match_components
-from arcade_agent.algorithms.provenance import classify_structural_changes
+from arcade_agent.algorithms.provenance import classify_structural_changes, structural_dict
 from arcade_agent.tools.registry import tool
 
 
@@ -15,7 +17,7 @@ from arcade_agent.tools.registry import tool
 def compare(
     arch_a: Architecture,
     arch_b: Architecture,
-) -> dict:
+) -> dict[str, Any]:
     """Compare two architectures and report differences.
 
     Uses the Hungarian algorithm to find optimal component matching based
@@ -26,7 +28,15 @@ def compare(
         arch_b: Target architecture (e.g., version N+1).
 
     Returns:
-        Dict with overall similarity, component matches, and summary stats.
+        Dict with overall similarity, component matches, the provenance-derived
+        ``structural`` classification (see ``structural_dict``), and summary
+        stats. ``matches`` is the raw 1:1 Hungarian view and is kept as-is for
+        similarity scoring; ``structural`` is the accurate split/merge-aware
+        view and is what ``components_added``/``components_removed`` in
+        ``summary`` are derived from. Consumers rendering component names as
+        "added" or "removed" should read from ``structural``, not by
+        inspecting ``matches`` for missing sides, to avoid reporting the same
+        diff two different ways in one place.
     """
     matches = match_components(arch_a, arch_b)
     overall_similarity = compute_a2a_similarity(arch_a, arch_b)
@@ -35,6 +45,7 @@ def compare(
     return {
         "overall_similarity": overall_similarity,
         "matches": matches,
+        "structural": structural_dict(changes),
         "summary": {
             "total_matches": len([m for m in matches if m["source"] and m["target"]]),
             "components_added": len(changes.added),

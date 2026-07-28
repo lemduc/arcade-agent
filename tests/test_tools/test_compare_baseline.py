@@ -259,6 +259,71 @@ def test_build_report_payload_uses_metric_semantics_for_lower_is_better_metrics(
     assert metric_rows["InterConnectivity"]["delta_class"] == "delta-positive"
 
 
+def _multi_entity_snapshot(commit_sha: str, components: list[dict]) -> dict:
+    """Snapshot with explicit multi-entity components, for A2A/provenance tests.
+
+    Unlike `_snapshot`, which gives every component a single synthetic
+    entity (too small to exercise split/merge significance thresholds),
+    this builds components from explicit entity FQN lists.
+    """
+    total_entities = sum(len(c["entities"]) for c in components)
+    return {
+        "repo_name": "sample-repo",
+        "commit_sha": commit_sha,
+        "algorithm": "pkg",
+        "num_components": len(components),
+        "num_entities": total_entities,
+        "num_edges": 0,
+        "source_num_entities": total_entities,
+        "class_count": total_entities,
+        "function_count": 0,
+        "method_count": 0,
+        "component_dependencies": [],
+        "components": [
+            {
+                "name": c["name"],
+                "responsibility": c["name"],
+                "num_entities": len(c["entities"]),
+                "class_count": len(c["entities"]),
+                "function_count": 0,
+                "method_count": 0,
+                "entity_kind_counts": {"class": len(c["entities"])},
+                "entities": c["entities"],
+            }
+            for c in components
+        ],
+        "metrics": {"RCI": 0.7, "TurboMQ": 0.4},
+        "smells": [],
+    }
+
+
+def test_build_comment_new_components_agrees_with_components_added_count_for_a_split():
+    """Pins the fix for the compare_baseline-level instance of the review's
+    "Components Added: 0" vs. "New components: authz" contradiction.
+
+    A genuine split must not be reported as an "added" component in either
+    the summary count or the "New components" detail list -- both must now
+    read from the provenance-derived `structural` classification, not from
+    which side a raw Hungarian match happened to leave empty.
+    """
+    baseline = _multi_entity_snapshot("abc1234", [
+        {"name": "auth", "entities": [
+            "pkg.auth.A", "pkg.auth.B", "pkg.auth.C",
+            "pkg.authz.X", "pkg.authz.Y", "pkg.authz.Z",
+        ]},
+    ])
+    current = _multi_entity_snapshot("def5678", [
+        {"name": "auth", "entities": ["pkg.auth.A", "pkg.auth.B", "pkg.auth.C"]},
+        {"name": "authz", "entities": ["pkg.authz.X", "pkg.authz.Y", "pkg.authz.Z"]},
+    ])
+
+    comment = build_comment(current, baseline)
+
+    assert "| Components Added | 0 |" in comment
+    assert "New components:" not in comment
+    assert "| Splits | 1 |" in comment
+
+
 def test_build_comment_shows_score_drivers_when_available():
     current = _snapshot("def5678", "Core", 1, 1)
     current["derived_metrics"] = {

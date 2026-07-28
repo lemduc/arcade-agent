@@ -19,7 +19,10 @@ def _fmt_delta(delta: float | None) -> str:
 
 
 def render_changelog_markdown(
-    changelog: dict[str, Any], *, include_smells: bool = True
+    changelog: dict[str, Any],
+    *,
+    include_smells: bool = True,
+    heading_level: int = 2,
 ) -> str:
     """Render a changelog_architecture result as markdown.
 
@@ -28,12 +31,19 @@ def render_changelog_markdown(
 
     Args:
         changelog: The dict returned by changelog_architecture.
-        include_smells: Whether to render the "### Smells" section. Callers
+        include_smells: Whether to render the "Smells" section. Callers
             that already print their own smells section elsewhere (e.g. a
             report that lists all current smells, not just the delta) should
             pass False to avoid a duplicate, differently-formatted section
             and a "new" label that a reader could mistake for a live
             regression rather than an artefact of an empty baseline.
+        heading_level: Number of ``#`` characters for this changelog's own
+            heading; its subsections (Split, Merged, Components, …) render
+            one level deeper. Callers embedding this output inside a larger
+            report should pass the level that keeps the changelog's
+            subsections from out-ranking sections of the outer report (e.g.
+            a report rooted at ``##`` should pass ``heading_level=3`` so its
+            own ``###`` sections are not re-parented under this one).
 
     Returns:
         A markdown string suitable for a pull-request comment.
@@ -42,7 +52,10 @@ def render_changelog_markdown(
     ref_a = refs.get("a") or "baseline"
     ref_b = refs.get("b") or "current"
 
-    lines = [f"## Architectural changes — `{ref_a}` → `{ref_b}`", ""]
+    top_heading = "#" * heading_level
+    sub_heading = "#" * (heading_level + 1)
+
+    lines = [f"{top_heading} Architectural changes — `{ref_a}` → `{ref_b}`", ""]
 
     components = changelog["components"]
     smells = changelog["smells"]
@@ -52,7 +65,7 @@ def render_changelog_markdown(
     body: list[str] = []
 
     if components["split"]:
-        body.append("### Split")
+        body.append(f"{sub_heading} Split")
         body.append("")
         for entry in components["split"]:
             source = entry["from"]
@@ -70,7 +83,7 @@ def render_changelog_markdown(
         body.append("")
 
     if components["merged"]:
-        body.append("### Merged")
+        body.append(f"{sub_heading} Merged")
         body.append("")
         for entry in components["merged"]:
             target = entry["into"]
@@ -86,7 +99,7 @@ def render_changelog_markdown(
         body.append("")
 
     if components["added"] or components["removed"] or components["renamed"]:
-        body.append("### Components")
+        body.append(f"{sub_heading} Components")
         body.append("")
         for name in components["added"]:
             body.append(f"- added `{name}`")
@@ -97,7 +110,7 @@ def render_changelog_markdown(
         body.append("")
 
     if shifts:
-        body.append(f"### Responsibility shifts ({len(shifts)})")
+        body.append(f"{sub_heading} Responsibility shifts ({len(shifts)})")
         body.append("")
         for shift in shifts[:20]:
             body.append(
@@ -108,7 +121,7 @@ def render_changelog_markdown(
         body.append("")
 
     if include_smells and (smells["new"] or smells["resolved"]):
-        body.append("### Smells")
+        body.append(f"{sub_heading} Smells")
         body.append("")
         for smell in smells["new"]:
             comps = ", ".join(f"`{c}`" for c in smell["affected_components"])
@@ -124,7 +137,7 @@ def render_changelog_markdown(
         if entry.get("delta") not in (None, 0)
     }
     if moved_metrics:
-        body.append("### Metrics")
+        body.append(f"{sub_heading} Metrics")
         body.append("")
         body.append("| Metric | Before | After | Delta |")
         body.append("|--------|--------|-------|-------|")
@@ -148,6 +161,6 @@ def render_changelog_markdown(
         body.append("")
 
     if not body:
-        body = ["No architectural changes.", ""]
+        body = ["No architectural changes since the baseline.", ""]
 
     return "\n".join(lines + body).rstrip() + "\n"
