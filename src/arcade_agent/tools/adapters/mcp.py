@@ -831,7 +831,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         graph_b: str,
         ref_a: str | None = None,
         ref_b: str | None = None,
-        min_entities: int = 3,
+        min_entities: int = 8,
         min_share: float = 0.20,
         max_tokens: int | None = None,
     ) -> str:
@@ -845,6 +845,11 @@ def _build_server():  # type: ignore[no-untyped-def]
             ref_a: Optional label for the earlier version (e.g. a tag).
             ref_b: Optional label for the later version.
             min_entities: Absolute significance threshold for a component flow.
+                ``min_share`` already catches proportionally-large moves in
+                small components, so this exists only to catch large absolute
+                moves in large ones; see
+                ``algorithms.provenance.classify_structural_changes`` for the
+                measured datapoint behind the default.
             min_share: Fractional significance threshold in (0, 1].
             max_tokens: Optional token budget for the response.
         """

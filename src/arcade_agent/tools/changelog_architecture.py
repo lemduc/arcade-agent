@@ -94,7 +94,7 @@ def changelog_architecture(
     metrics_b: list[MetricResult] | None = None,
     ref_a: str | None = None,
     ref_b: str | None = None,
-    min_entities: int = 3,
+    min_entities: int = 8,
     min_share: float = 0.20,
 ) -> dict[str, Any]:
     """Build an architectural changelog between two recovered architectures.
@@ -110,7 +110,11 @@ def changelog_architecture(
         metrics_b: Metrics for the later version. Computed if omitted.
         ref_a: Optional label for the earlier version, recorded as metadata.
         ref_b: Optional label for the later version, recorded as metadata.
-        min_entities: Absolute significance threshold for a flow.
+        min_entities: Absolute significance threshold for a flow. ``min_share``
+            already catches proportionally-large moves in small components, so
+            this exists only to catch large absolute moves in large ones; see
+            ``classify_structural_changes`` for the measured datapoint behind
+            the default.
         min_share: Fractional significance threshold in (0, 1].
 
     Returns:

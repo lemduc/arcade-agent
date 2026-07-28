@@ -126,7 +126,7 @@ def classify_structural_changes(
     arch_a: Architecture,
     arch_b: Architecture,
     *,
-    min_entities: int = 3,
+    min_entities: int = 8,
     min_share: float = 0.20,
 ) -> StructuralChanges:
     """Classify components into disjoint structural buckets.
@@ -135,6 +135,19 @@ def classify_structural_changes(
     at least *min_share* of the smaller of its two endpoint components measured
     at its own version. Splits and merges take precedence over renames so that
     no structural event is reported twice.
+
+    ``min_share`` already catches proportionally-large moves in small
+    components (e.g. 3 of 10 entities is 30%), so ``min_entities`` exists only
+    to catch large *absolute* moves in large components, where the same move
+    is a small share. The default was tuned against arcade-agent's own
+    ``v0.1.0 -> v0.1.1`` history: at 3, four entities moving from the
+    65-entity ``Algorithms`` component to the 56-entity ``Tools`` component
+    (a routine refactor, ~7% of the smaller side) was misreported as both a
+    split (``Algorithms`` -> ``Algorithms`` + ``Tools``) and a merge
+    (``Tools`` <- ``Algorithms`` + ``Tools``); at 8 both components correctly
+    fall back to stable, with the move still visible as a responsibility
+    shift (entity-level shift count is unaffected by this threshold: 6 in
+    both cases). See ``tests/test_changelog_e2e.py`` for the datapoint.
 
     Args:
         arch_a: The earlier architecture.
