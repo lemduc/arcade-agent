@@ -288,10 +288,16 @@ def _materialize_ref(repo_path: Path, ref: str) -> Path:
         available = ", ".join(tags) if tags else "none"
         raise ValueError(f"Unknown ref {ref!r} in {repo_path}. Available tags: {available}")
 
+    # Archive the resolved SHA, not the raw *ref* string: this closes a
+    # TOCTOU window between verification and archival, and avoids passing a
+    # user-controlled string starting with "-" to `git archive` as an
+    # argument.
+    resolved_sha = resolved.stdout.strip()
+
     dest = Path(tempfile.mkdtemp(prefix="arcade_agent_ref_"))
     try:
         archive = subprocess.run(
-            ["git", "-C", str(repo_path), "archive", ref],
+            ["git", "-C", str(repo_path), "archive", resolved_sha],
             capture_output=True,
             check=True,
         )
@@ -329,7 +335,8 @@ def ingest(
             kotlin, or "multi" to ingest every detected language).
         languages: Explicit language list for polyglot ingest (e.g. ["java", "kotlin"]).
             Mutually exclusive with *language*.
-        work_dir: Directory to clone into. Uses temp dir if None.
+        work_dir: Directory to clone into. Uses temp dir if None. Ignored when
+            *ref* is set.
         exclude_tests: Exclude test/vendor/build directories (default: True).
         source_root: Override source root (e.g., 'src/main/java'). Auto-detected if None.
         ref: Optional git commit, tag or branch to analyse instead of the
@@ -422,6 +429,7 @@ def _clone_and_ingest(
     """Clone a remote repo and ingest it."""
     name = _repo_name_from_url(url)
 
+    caller_supplied_work_dir = work_dir is not None
     if work_dir is None:
         work_dir = Path(tempfile.mkdtemp(prefix="arcade_agent_"))
     clone_path = work_dir / name
@@ -439,7 +447,7 @@ def _clone_and_ingest(
             pass
 
     resolved = _resolve_languages(clone_path, language, languages)
-    return _build_ingested_repo(
+    ingested = _build_ingested_repo(
         project_root=clone_path,
         name=name,
         version=version,
@@ -449,6 +457,20 @@ def _clone_and_ingest(
         exclude_tests=exclude_tests,
         source_root=source_root,
     )
+    # `_build_ingested_repo` may narrow `.path` to a detected source root
+    # (e.g. `src/main/java`); without `temp_root`, cleanup() would then
+    # rmtree only that subdirectory and leak the rest of the clone,
+    # including `.git`. `clone_path` is always what was cloned, so it is
+    # always a safe cleanup target regardless of narrowing.
+    #
+    # When `work_dir` was auto-created (the caller didn't supply one), it
+    # contains nothing but `clone_path`, so cleaning up the whole auto
+    # directory also avoids leaving an empty temp-dir shell behind after
+    # `clone_path` is removed. When `work_dir` was supplied by the caller,
+    # it must never be the cleanup target -- only `clone_path`, exactly as
+    # before this fix.
+    ingested.temp_root = clone_path if caller_supplied_work_dir else work_dir
+    return ingested
 
 
 def _build_ingested_repo(
