@@ -332,13 +332,17 @@ def ingest(
         if not source_path.is_dir():
             raise ValueError(f"ref={ref!r} requires a local repository path, got {source!r}")
         extracted = _materialize_ref(source_path, ref)
-        repo = _ingest_local(
-            extracted,
-            language=language,
-            languages=languages,
-            exclude_tests=exclude_tests,
-            source_root=Path(source_root) if source_root else None,
-        )
+        try:
+            repo = _ingest_local(
+                extracted,
+                language=language,
+                languages=languages,
+                exclude_tests=exclude_tests,
+                source_root=Path(source_root) if source_root else None,
+            )
+        except BaseException:
+            shutil.rmtree(extracted, ignore_errors=True)
+            raise
         repo.version = ref
         repo.is_temp = True
         repo.path = extracted

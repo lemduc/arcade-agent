@@ -1,6 +1,7 @@
 """Tests for ingesting a specific git ref."""
 
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -71,3 +72,22 @@ def test_ref_on_non_git_directory_raises(tmp_path: Path):
     (plain / "a.py").write_text("x = 1\n")
     with pytest.raises(ValueError, match="not a git repository"):
         ingest(str(plain), language="python", ref="v1")
+
+
+def test_ingest_at_ref_cleans_up_extracted_dir_when_local_ingest_fails(
+    two_tag_repo: Path,
+):
+    """A failure after git archive extraction must not strand the temp tree.
+
+    ``ref="v1"`` resolves and extracts fine; the unsupported ``language``
+    then makes the downstream local-ingest call raise. The extracted
+    directory must be gone afterwards, not just unreferenced.
+    """
+    tmp_root = Path(tempfile.gettempdir())
+    before = set(tmp_root.glob("arcade_agent_ref_*"))
+
+    with pytest.raises(ValueError):
+        ingest(str(two_tag_repo), language="bogus-lang", ref="v1")
+
+    after = set(tmp_root.glob("arcade_agent_ref_*"))
+    assert after == before, f"leaked temp dirs: {after - before}"
