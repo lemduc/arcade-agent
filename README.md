@@ -7,7 +7,7 @@
 [![MCP compatible](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io/)
 [![GitHub stars](https://img.shields.io/github/stars/lemduc/arcade-agent?style=social)](https://github.com/lemduc/arcade-agent/stargazers)
 
-18 MCP tools · 4 task-shaped context tools · one git-versioned baseline · one pip install
+19 MCP tools · 4 task-shaped context tools · one git-versioned baseline · one pip install
 
 Docs: https://arcade-agent.dev
 
@@ -69,12 +69,13 @@ print(len(result.architecture.components), len(result.smells))
 | Tool | Description |
 |------|-------------|
 | `analyze` | One-call ingest → parse → recover → smells → metrics (async; offloads blocking work) |
-| `ingest` | Clone/load source code, detect versions, discover files |
+| `ingest` | Clone/load source code, detect versions, discover files; `ref=` materialises a specific commit/tag/branch without touching the working tree |
 | `parse` | Parse source → DependencyGraph via tree-sitter |
 | `recover` | Recover architecture (PKG, WCA, ACDC, ARC, LIMBO) |
 | `detect_smells` | Find dependency cycles, concern overload, scattered functionality, link overload (heuristic or LLM-powered) |
 | `compute_metrics` | Calculate RCI, TurboMQ, connectivity metrics |
 | `compare` | A2A architecture comparison across versions |
+| `changelog_architecture` | Architectural changelog between two versions: components added/removed/renamed/split/merged, entities that changed component, smell and metric deltas |
 | `visualize` | Generate HTML reports, DOT, Mermaid, JSON, RSF |
 | `query` | Explore recovered architecture interactively |
 | `summarize` | Codebase overview with package tree, hotspots, entry points; drill-down via `focus` |
@@ -85,7 +86,7 @@ print(len(result.architecture.components), len(result.smells))
 | `dependency_cone` | Upstream/downstream dependency cone of an entity or file, with depth control |
 | `context_for_task` | Rank the minimal set of files to read for a natural-language task |
 
-Plus two session helpers — `get_full_result` and `list_sessions` — for a total of 18 MCP tools.
+Plus two session helpers — `get_full_result` and `list_sessions` — for a total of 19 MCP tools.
 
 ## Balanced Architecture Score
 

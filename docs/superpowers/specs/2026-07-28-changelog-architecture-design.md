@@ -75,7 +75,7 @@ The repo is pre-1.0 and `compare`'s only in-tree consumer is `ci/arch_diff.py`.
 
   ```python
   def classify_structural_changes(
-      arch_a, arch_b, *, min_entities: int = 3, min_share: float = 0.20
+      arch_a, arch_b, *, min_entities: int = 8, min_share: float = 0.20
   ) -> StructuralChanges
   ```
 
@@ -147,7 +147,7 @@ The repo is pre-1.0 and `compare`'s only in-tree consumer is `ci/arch_diff.py`.
       metrics_a=None, metrics_b=None,    # computed if not supplied
       ref_a: str | None = None,          # recorded as metadata only
       ref_b: str | None = None,
-      min_entities: int = 3,
+      min_entities: int = 8,
       min_share: float = 0.20,
   ) -> dict
   ```
@@ -245,7 +245,9 @@ worktree registration, and no cleanup beyond removing the temp directory. Its co
 that the extracted tree has no `.git`, so tag-based version detection cannot run —
 irrelevant here, since the caller has already named the ref.
 
-Applies to local repos and to cloned URLs (archive is taken from the clone).
+Applies only to local repos: `ingest` requires `source` to be an existing local
+directory when `ref` is given and raises otherwise, so a cloned URL must first be
+ingested (without `ref`) into a local clone before a `ref=` ingest can run against it.
 
 ## Error handling
 
@@ -285,12 +287,17 @@ working tree is untouched and the extracted tree matches the ref.
 Golden-file test for `render_changelog_markdown`.
 
 End-to-end: arcade-agent itself between `v0.1.1` and `v0.2.0` — a real fixture whose
-figures are already known (64 → 65 source files, 325 → 331 entities, 176 → 179 edges,
-9 components both sides).
+figures are already known (63 → 65 source files, 305 → 331 entities, 167 → 179 edges,
+9 components both sides; see `tests/test_changelog_e2e.py`).
 
 ## Open tunables
 
-`min_entities = 3` and `min_share = 0.20` are the defaults, exposed as parameters.
+`min_entities = 8` and `min_share = 0.20` are the defaults, exposed as parameters.
 They decide signal-to-noise: too low and every refactor reads as a split, too high and
-real ones vanish. Expect to revise them after running against real repositories; the
-e2e fixture above is the first datapoint.
+real ones vanish. `min_entities` started at 3 and was raised to 8 after the first real
+datapoint: at 3, a routine 4-entity refactor between arcade-agent's own `v0.1.0` and
+`v0.1.1` (~7% of the smaller component) was misreported as both a split and a merge;
+at 8 it correctly reads as stable, with the move still visible as a responsibility
+shift. See `algorithms/provenance.py::classify_structural_changes` and
+`tests/test_changelog_e2e.py` for the measurement. Expect further revision after
+running against more real repositories.
