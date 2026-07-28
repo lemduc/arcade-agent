@@ -237,7 +237,7 @@ def test_pure_rename():
     assert changes.renamed == (("util", "common"),)
     assert changes.added == ()
     assert changes.removed == ()
-    assert changes.rename_map == {"util": "common"}
+    assert changes.rename_map == (("util", "common"),)
 
 
 def test_clean_split_does_not_also_report_an_addition():
@@ -246,7 +246,7 @@ def test_clean_split_does_not_also_report_an_addition():
     changes = classify_structural_changes(arch_a, arch_b)
     assert changes.split == (
         Split(source="auth", targets=("auth", "authz"),
-              entities={"auth": 3, "authz": 3}),
+              entities=(("auth", 3), ("authz", 3))),
     )
     assert changes.added == ()
     assert changes.renamed == ()
@@ -258,7 +258,7 @@ def test_clean_merge_does_not_also_report_a_removal():
     changes = classify_structural_changes(arch_a, arch_b)
     assert changes.merged == (
         Merge(target="core", sources=("core", "util"),
-              entities={"core": 3, "util": 3}),
+              entities=(("core", 3), ("util", 3))),
     )
     assert changes.removed == ()
     assert changes.renamed == ()
@@ -371,7 +371,7 @@ class Split:
 
     source: str
     targets: tuple[str, ...]
-    entities: dict[str, int]
+    entities: tuple[tuple[str, int], ...]
 
 
 @dataclass(frozen=True)
@@ -386,7 +386,7 @@ class Merge:
 
     target: str
     sources: tuple[str, ...]
-    entities: dict[str, int]
+    entities: tuple[tuple[str, int], ...]
 
 
 @dataclass(frozen=True)
@@ -407,7 +407,7 @@ class StructuralChanges:
     merged: tuple[Merge, ...]
     stable: tuple[str, ...]
     flows: tuple[Flow, ...]
-    rename_map: dict[str, str]
+    rename_map: tuple[tuple[str, str], ...]
 
 
 def classify_structural_changes(
@@ -465,10 +465,10 @@ def classify_structural_changes(
         Split(
             source=name,
             targets=tuple(sorted(f.target for f in outgoing[name])),
-            entities={
-                f.target: len(f.entities)
+            entities=tuple(
+                (f.target, len(f.entities))
                 for f in sorted(outgoing[name], key=lambda f: f.target)
-            },
+            ),
         )
         for name in sorted(split_sources)
     )
@@ -476,10 +476,10 @@ def classify_structural_changes(
         Merge(
             target=name,
             sources=tuple(sorted(f.source for f in incoming[name])),
-            entities={
-                f.source: len(f.entities)
+            entities=tuple(
+                (f.source, len(f.entities))
                 for f in sorted(incoming[name], key=lambda f: f.source)
-            },
+            ),
         )
         for name in sorted(merge_targets)
     )
@@ -512,8 +512,8 @@ def classify_structural_changes(
     )
     added = tuple(c.name for c in arch_b.components if not incoming.get(c.name))
 
-    rename_map = {source: target for source, target in renamed}
-    rename_map.update({name: name for name in stable})
+    rename_pairs = list(renamed) + [(name, name) for name in stable]
+    rename_pairs.sort()
 
     return StructuralChanges(
         added=tuple(sorted(added)),
@@ -523,7 +523,7 @@ def classify_structural_changes(
         merged=merges,
         stable=tuple(stable),
         flows=flows,
-        rename_map=rename_map,
+        rename_map=tuple(rename_pairs),
     )
 ```
 
@@ -930,6 +930,8 @@ def test_reports_structural_changes():
         {"from": "auth", "into": ["auth", "authz"],
          "entities": {"auth": 3, "authz": 3}}
     ]
+    # note: _structural_dict converts Split.entities (a tuple of pairs) into a
+    # plain dict for the output, so the serialised shape stays dict-shaped.
     assert result["components"]["added"] == []
 
 
@@ -1142,7 +1144,8 @@ def changelog_architecture(
     ]
     shifts.sort(key=lambda s: (s["entity"], s["from"], s["to"]))
 
-    keys_a = {_smell_key(s, changes.rename_map): s for s in smells_a}
+    rename_map = dict(changes.rename_map)
+    keys_a = {_smell_key(s, rename_map): s for s in smells_a}
     keys_b = {_smell_key(s): s for s in smells_b}
     new_keys = sorted(set(keys_b) - set(keys_a))
     resolved_keys = sorted(set(keys_a) - set(keys_b))
