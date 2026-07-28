@@ -14,7 +14,9 @@ import sys
 from pathlib import Path
 
 from arcade_agent.algorithms.coupling import compute_balanced_scores
+from arcade_agent.exporters.changelog_md import render_changelog_markdown
 from arcade_agent.serialization import load_architecture, save_architecture
+from arcade_agent.tools.changelog_architecture import changelog_architecture
 from arcade_agent.tools.compare import compare
 from arcade_agent.tools.compute_metrics import compute_metrics
 from arcade_agent.tools.detect_smells import detect_smells
@@ -95,57 +97,20 @@ def build_report(
 
         lines.append("")
 
-        # Changes summary
-        lines.append("### Changes")
-        lines.append("")
-        if summary["components_added"]:
-            added_names = [
-                m["target"]
-                for m in drift["matches"]
-                if not m["source"]
-            ]
-            lines.append(
-                f"- {summary['components_added']} component(s) added: "
-                f"`{'`, `'.join(added_names)}`"
-            )
-        if summary["components_removed"]:
-            removed_names = [
-                m["source"]
-                for m in drift["matches"]
-                if not m["target"]
-            ]
-            lines.append(
-                f"- {summary['components_removed']} component(s) removed: "
-                f"`{'`, `'.join(removed_names)}`"
-            )
-
-        # Count entity movements
-        entities_moved = sum(
-            len(m.get("entities_added", [])) + len(m.get("entities_removed", []))
-            for m in drift["matches"]
-            if m["source"] and m["target"]
+        # Architectural changelog (structural + smell + metric changes)
+        changelog = changelog_architecture(
+            baseline,
+            graph,
+            current,
+            graph,
+            smells_a=[],
+            smells_b=smells,
+            metrics_a=[],
+            metrics_b=metrics,
+            ref_a="baseline",
+            ref_b="current",
         )
-        if entities_moved:
-            lines.append(f"- {entities_moved} entity movement(s) between components")
-
-        if summary["possible_merges"]:
-            lines.append(
-                f"- {summary['possible_merges']} possible merge(s) detected"
-            )
-        if summary["possible_splits"]:
-            lines.append(
-                f"- {summary['possible_splits']} possible split(s) detected"
-            )
-
-        if not any([
-            summary["components_added"],
-            summary["components_removed"],
-            entities_moved,
-            summary["possible_merges"],
-            summary["possible_splits"],
-        ]):
-            lines.append("- No structural changes detected")
-
+        lines.append(render_changelog_markdown(changelog))
         lines.append("")
 
     # Smells section

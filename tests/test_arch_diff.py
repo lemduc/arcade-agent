@@ -7,6 +7,7 @@ from arcade_agent.models.graph import DependencyGraph, Edge, Entity
 from arcade_agent.models.metrics import MetricResult
 from arcade_agent.models.smells import SmellInstance, SmellType
 from arcade_agent.serialization import load_architecture, save_architecture
+from arcade_agent.tools.compare import compare
 
 # Import after arcade_agent so modules are available
 from scripts.arch_diff import build_report, main
@@ -110,35 +111,7 @@ def test_diff_report_includes_balanced_scores(sample_arch, sample_graph, sample_
 
 
 def test_diff_with_baseline(sample_arch, sample_graph, sample_metrics):
-    """Report with baseline includes drift table."""
-    drift = {
-        "overall_similarity": 0.85,
-        "matches": [
-            {
-                "source": "Calc",
-                "target": "Calc",
-                "similarity": 1.0,
-                "entities_added": [],
-                "entities_removed": [],
-            },
-            {
-                "source": "Util",
-                "target": "Util",
-                "similarity": 1.0,
-                "entities_added": [],
-                "entities_removed": [],
-            },
-        ],
-        "summary": {
-            "total_matches": 2,
-            "components_added": 0,
-            "components_removed": 0,
-            "possible_splits": 0,
-            "possible_merges": 0,
-            "arch_a_components": 2,
-            "arch_b_components": 2,
-        },
-    }
+    """Report with baseline includes drift table, sourced from a real compare()."""
     baseline = Architecture(
         components=[
             Component(name="Calc", responsibility="", entities=["com.example.calc.Calculator"]),
@@ -146,6 +119,9 @@ def test_diff_with_baseline(sample_arch, sample_graph, sample_metrics):
         ],
         algorithm="pkg",
     )
+    drift = compare(baseline, sample_arch)
+    assert drift["summary"]["splits"] == 0
+    assert drift["summary"]["merges"] == 0
 
     report = build_report(
         current=sample_arch,
@@ -157,8 +133,8 @@ def test_diff_with_baseline(sample_arch, sample_graph, sample_metrics):
     )
     assert "### Drift from Baseline" in report
     assert "Similarity" in report
-    assert "0.85" in report
-    assert "No structural changes detected" in report
+    assert f"{drift['overall_similarity']:.2f}" in report
+    assert "No architectural changes." in report
 
 
 def test_diff_with_baseline_includes_balanced_scores(sample_arch, sample_graph, sample_metrics):
@@ -167,19 +143,6 @@ def test_diff_with_baseline_includes_balanced_scores(sample_arch, sample_graph, 
         MetricResult(name="BalancedArchitectureScore", value=0.8125),
         MetricResult(name="PrincipleAlignmentScore", value=0.7900),
     ]
-    drift = {
-        "overall_similarity": 0.85,
-        "matches": [],
-        "summary": {
-            "total_matches": 0,
-            "components_added": 0,
-            "components_removed": 0,
-            "possible_splits": 0,
-            "possible_merges": 0,
-            "arch_a_components": 2,
-            "arch_b_components": 2,
-        },
-    }
     baseline = Architecture(
         components=[
             Component(name="Calc", responsibility="", entities=["com.example.calc.Calculator"]),
@@ -187,6 +150,7 @@ def test_diff_with_baseline_includes_balanced_scores(sample_arch, sample_graph, 
         ],
         algorithm="pkg",
     )
+    drift = compare(baseline, sample_arch)
 
     report = build_report(
         current=sample_arch,
@@ -254,3 +218,65 @@ def test_main_update_baseline(tmp_path, monkeypatch):
     loaded = load_architecture(baseline_path)
     assert loaded.algorithm == "pkg"
     assert len(loaded.components) >= 1
+
+
+def test_report_includes_the_architectural_changelog(tmp_path):
+    """The PR comment shows the changelog section when a baseline exists."""
+    from arcade_agent.algorithms.architecture import Architecture, Component
+    from arcade_agent.ci.arch_diff import build_report
+    from arcade_agent.parsers.graph import DependencyGraph
+    from arcade_agent.tools.compare import compare
+
+    baseline = Architecture(
+        components=[Component(name="auth", responsibility="",
+                              entities=["a.A", "a.B", "a.C", "z.X", "z.Y", "z.Z"])],
+        algorithm="pkg",
+    )
+    current = Architecture(
+        components=[
+            Component(name="auth", responsibility="", entities=["a.A", "a.B", "a.C"]),
+            Component(name="authz", responsibility="", entities=["z.X", "z.Y", "z.Z"]),
+        ],
+        algorithm="pkg",
+    )
+    graph = DependencyGraph()
+    report = build_report(
+        current, graph, metrics=[], smells=[],
+        drift=compare(baseline, current), baseline=baseline,
+    )
+    assert "Architectural changes" in report
+    assert "authz" in report
+
+
+def test_arch_diff_exits_zero_even_when_drift_is_detected(tmp_path):
+    """Documented behaviour: arch-diff is informational, not a gate.
+
+    Exercises the real console script so the guarantee is tested by
+    behaviour, not by grepping the source for a particular spelling of exit.
+    """
+    import subprocess
+
+    repo = tmp_path / "proj"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "__init__.py").write_text("")
+    (repo / "pkg" / "a.py").write_text("class A:\n    pass\n")
+    (repo / "pkg" / "b.py").write_text("from pkg.a import A\n\n\nclass B(A):\n    pass\n")
+
+    # First run stores a baseline; second run detects drift against it.
+    # cwd is pinned to the throwaway repo so the default relative
+    # ".arcade/baseline.json" path never touches this repo's own baseline.
+    first = subprocess.run(
+        ["arcade-arch-diff", "--source", str(repo), "--language", "python",
+         "--update-baseline"],
+        capture_output=True,
+        cwd=repo,
+    )
+    assert first.returncode == 0, first.stderr.decode()
+
+    (repo / "pkg" / "c.py").write_text("from pkg.b import B\n\n\nclass C(B):\n    pass\n")
+    second = subprocess.run(
+        ["arcade-arch-diff", "--source", str(repo), "--language", "python"],
+        capture_output=True,
+        cwd=repo,
+    )
+    assert second.returncode == 0, second.stderr.decode()

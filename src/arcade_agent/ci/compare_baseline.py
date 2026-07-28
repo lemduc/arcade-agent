@@ -1041,10 +1041,10 @@ def build_comment(
             lines.append(f"| Matched Components | {summary['total_matches']} |")
             lines.append(f"| Components Added | {summary['components_added']} |")
             lines.append(f"| Components Removed | {summary['components_removed']} |")
-            if summary.get("possible_splits"):
-                lines.append(f"| Possible Splits | {summary['possible_splits']} |")
-            if summary.get("possible_merges"):
-                lines.append(f"| Possible Merges | {summary['possible_merges']} |")
+            if summary.get("splits"):
+                lines.append(f"| Splits | {summary['splits']} |")
+            if summary.get("merges"):
+                lines.append(f"| Merges | {summary['merges']} |")
             lines.append("")
 
             # Component-level matches detail
@@ -1288,10 +1288,10 @@ def main() -> None:
                 f"{summary['arch_b_components']} "
                 f"(+{summary['components_added']} / -{summary['components_removed']})"
             )
-            if summary.get("possible_splits"):
-                print(f"  Possible Splits: {summary['possible_splits']}")
-            if summary.get("possible_merges"):
-                print(f"  Possible Merges: {summary['possible_merges']}")
+            if summary.get("splits"):
+                print(f"  Splits: {summary['splits']}")
+            if summary.get("merges"):
+                print(f"  Merges: {summary['merges']}")
         else:
             print(
                 f"  Components:  {baseline.get('num_components')} → "
