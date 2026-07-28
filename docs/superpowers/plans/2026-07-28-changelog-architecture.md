@@ -17,9 +17,12 @@
 - **Type hints on every function**, including return types.
 - **mypy:** the repo has **220 pre-existing strict-mode errors across 33 files** at the
   merge base (`b66ace4`) — `mypy src/` does **not** pass today and fixing that is out of
-  scope. The binding requirement is: **the files you create or modify must be
-  individually clean** (`mypy src/path/to/your_file.py` → "Success"), **and the
-  tree-wide total must not rise above 220**. Check both.
+  scope. The binding requirement is: **the tree-wide total must not rise above 220**
+  (`mypy src/ 2>&1 | tail -1`), **and you must add no new error of your own**. Files you
+  *create* should be individually clean; files you *modify* may carry pre-existing
+  errors on lines you did not touch (e.g. `tools/compare.py` has a bare `-> dict:`
+  annotation that predates this work and cannot be fixed without changing a signature
+  the plan freezes). Report any pre-existing error you leave in place.
 - **`@dataclass` for domain objects.** Use `frozen=True` for the new value objects.
 - **Google-style docstrings** with `Args:` / `Returns:` / `Raises:`.
 - **Import order:** stdlib → third-party → local (`from arcade_agent.models.graph import ...`).
@@ -1464,7 +1467,17 @@ Expected: hits in `src/arcade_agent/ci/arch_diff.py` and possibly `tests/test_ar
 
 - [ ] **Step 2: Update the failing test**
 
-In `tests/test_arch_diff.py`, replace assertions referencing `possible_splits` / `possible_merges` with `splits` / `merges`. Then add:
+**First, fix a test-quality problem the Task 3 review uncovered.** `tests/test_arch_diff.py`
+currently hand-builds its `drift` dict as a literal with the old key names and never calls
+`compare()`. That is why it stayed green through Task 3 even though `ci/arch_diff.py:237`
+calls the real `compare()` and `build_report()` reads keys that no longer exist — the
+production CI path raises `KeyError: 'possible_merges'` on this branch right now. A test
+that mocks the contract it is supposed to protect gives false confidence.
+
+Rewire those tests to obtain `drift` by calling the real `compare(baseline, current)`
+rather than by constructing a dict literal. Delete the hand-built literals. Then replace
+any remaining assertions referencing `possible_splits` / `possible_merges` with
+`splits` / `merges`. Then add:
 
 ```python
 def test_report_includes_the_architectural_changelog(tmp_path):
