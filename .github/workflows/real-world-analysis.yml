@@ -4,6 +4,10 @@ run-name: >-
   ${{ inputs['campaign-title'] || 'independent analysis' }}
 
 on:
+  # Temporary branch-only smoke trigger. Removed after the v7 run starts.
+  push:
+    branches:
+      - codex/real-world-ci-reports
   workflow_dispatch:
     inputs:
       case:
@@ -63,7 +67,9 @@ jobs:
       - name: Select pinned repository cases
         id: matrix
         env:
-          CASE_SELECTION: ${{ github.event_name == 'schedule' && 'scheduled' || inputs.case }}
+          CASE_SELECTION: >-
+            ${{ github.event_name == 'push' && 'RW-L02' ||
+                github.event_name == 'schedule' && 'scheduled' || inputs.case }}
         run: |
           MATRIX=$(python scripts/run_real_world_case.py matrix --selection "${CASE_SELECTION}")
           echo "matrix=${MATRIX}" >> "$GITHUB_OUTPUT"
@@ -101,7 +107,8 @@ jobs:
       - name: Analyze pinned upstream snapshot
         env:
           CASE_ID: ${{ matrix.case_id }}
-          SKIP_WARM: ${{ inputs['skip-warm'] || false }}
+          SKIP_WARM: >-
+            ${{ github.event_name == 'push' && true || inputs['skip-warm'] || false }}
         run: |
           ARGS=(
             run
