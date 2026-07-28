@@ -1487,15 +1487,40 @@ def test_report_includes_the_architectural_changelog(tmp_path):
     assert "authz" in report
 
 
-def test_arch_diff_never_exits_nonzero():
-    """Documented behaviour: arch-diff is informational, not a gate."""
-    import inspect
+def test_arch_diff_exits_zero_even_when_drift_is_detected(tmp_path):
+    """Documented behaviour: arch-diff is informational, not a gate.
 
-    from arcade_agent.ci import arch_diff
+    Exercises the real console script so the guarantee is tested by
+    behaviour, not by grepping the source for a particular spelling of exit.
+    """
+    import subprocess
 
-    source = inspect.getsource(arch_diff)
-    assert "sys.exit(1)" not in source
+    repo = tmp_path / "proj"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "__init__.py").write_text("")
+    (repo / "pkg" / "a.py").write_text("class A:\n    pass\n")
+    (repo / "pkg" / "b.py").write_text("from pkg.a import A\n\n\nclass B(A):\n    pass\n")
+
+    # First run stores a baseline; second run detects drift against it.
+    first = subprocess.run(
+        ["arcade-arch-diff", "--source", str(repo), "--language", "python",
+         "--update-baseline"],
+        capture_output=True,
+    )
+    assert first.returncode == 0, first.stderr.decode()
+
+    (repo / "pkg" / "c.py").write_text("from pkg.b import B\n\n\nclass C(B):\n    pass\n")
+    second = subprocess.run(
+        ["arcade-arch-diff", "--source", str(repo), "--language", "python"],
+        capture_output=True,
+    )
+    assert second.returncode == 0, second.stderr.decode()
 ```
+
+**If `arcade-arch-diff`'s real flags differ from `--source` / `--language` /
+`--update-baseline`, read the argparse setup at the bottom of
+`src/arcade_agent/ci/arch_diff.py` and use the real ones.** Do not change the
+assertion: the exit code must be 0 on both runs.
 
 - [ ] **Step 3: Run tests to verify they fail**
 
