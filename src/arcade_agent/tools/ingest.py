@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -241,6 +242,55 @@ def _repo_name_from_url(url: str) -> str:
     return name
 
 
+def _materialize_ref(repo_path: Path, ref: str) -> Path:
+    """Extract a git ref into a fresh temp directory.
+
+    Uses ``git archive`` so the caller's working tree, index and HEAD are
+    untouched. The extracted tree has no ``.git`` directory, which is why the
+    caller supplies the version rather than detecting it from tags.
+
+    Args:
+        repo_path: Path to a git repository.
+        ref: A commit SHA, tag or branch name.
+
+    Returns:
+        Path to the extracted tree. Caller owns cleanup.
+
+    Raises:
+        ValueError: If *repo_path* is not a git repository, or *ref* is unknown.
+    """
+    if not (repo_path / ".git").exists():
+        raise ValueError(f"{repo_path} is not a git repository; cannot use ref={ref!r}")
+
+    resolved = subprocess.run(
+        ["git", "-C", str(repo_path), "rev-parse", "--verify", f"{ref}^{{commit}}"],
+        capture_output=True,
+        text=True,
+    )
+    if resolved.returncode != 0:
+        tags = subprocess.run(
+            ["git", "-C", str(repo_path), "tag", "--list"],
+            capture_output=True,
+            text=True,
+        ).stdout.split()
+        available = ", ".join(tags) if tags else "none"
+        raise ValueError(f"Unknown ref {ref!r} in {repo_path}. Available tags: {available}")
+
+    dest = Path(tempfile.mkdtemp(prefix="arcade_agent_ref_"))
+    archive = subprocess.run(
+        ["git", "-C", str(repo_path), "archive", ref],
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["tar", "-x", "-C", str(dest)],
+        input=archive.stdout,
+        check=True,
+        capture_output=True,
+    )
+    return dest
+
+
 @tool(
     name="ingest",
     description="Prepare source code for analysis. Accepts git URL or local path. "
@@ -253,6 +303,7 @@ def ingest(
     work_dir: str | None = None,
     exclude_tests: bool = True,
     source_root: str | None = None,
+    ref: str | None = None,
 ) -> IngestedRepo:
     """Ingest a repository from a URL or local path.
 
@@ -265,10 +316,34 @@ def ingest(
         work_dir: Directory to clone into. Uses temp dir if None.
         exclude_tests: Exclude test/vendor/build directories (default: True).
         source_root: Override source root (e.g., 'src/main/java'). Auto-detected if None.
+        ref: Optional git commit, tag or branch to analyse instead of the
+            working tree. Extracted to a temp directory; the caller's working
+            tree is never modified.
 
     Returns:
         IngestedRepo with path, name, version, and source file list.
+
+    Raises:
+        ValueError: If *ref* is given but *source* is not a local directory,
+            is not a git repository, or *ref* does not resolve to a commit.
     """
+    if ref is not None:
+        source_path = Path(source)
+        if not source_path.is_dir():
+            raise ValueError(f"ref={ref!r} requires a local repository path, got {source!r}")
+        extracted = _materialize_ref(source_path, ref)
+        repo = _ingest_local(
+            extracted,
+            language=language,
+            languages=languages,
+            exclude_tests=exclude_tests,
+            source_root=Path(source_root) if source_root else None,
+        )
+        repo.version = ref
+        repo.is_temp = True
+        repo.path = extracted
+        return repo
+
     source_path = Path(source)
     sr = Path(source_root) if source_root else None
     if source_path.is_dir():
