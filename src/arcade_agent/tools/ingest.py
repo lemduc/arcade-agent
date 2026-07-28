@@ -27,11 +27,23 @@ class IngestedRepo:
     language: str | None = None
     languages: list[str] = field(default_factory=list)
     versions: list[str] = field(default_factory=list)
+    temp_root: Path | None = None
+    """Directory to delete on cleanup, if it differs from `path`.
+
+    `path` may be narrowed to a detected source root (e.g. `src/`,
+    `src/main/java`) so parsers can derive correct package-relative FQNs.
+    When ingestion materialised a whole extra tree (e.g. `ref=` extraction),
+    that tree's root belongs here so cleanup removes the entire tree rather
+    than just the narrowed subdirectory. None means `path` itself is what
+    was materialised and should be removed.
+    """
 
     def cleanup(self) -> None:
-        """Remove temporary directory if applicable."""
-        if self.is_temp and self.path.exists():
-            shutil.rmtree(self.path)
+        """Remove the temporary directory if applicable."""
+        if self.is_temp:
+            target = self.temp_root or self.path
+            if target.exists():
+                shutil.rmtree(target, ignore_errors=True)
 
 
 # Language extension mapping
@@ -277,17 +289,21 @@ def _materialize_ref(repo_path: Path, ref: str) -> Path:
         raise ValueError(f"Unknown ref {ref!r} in {repo_path}. Available tags: {available}")
 
     dest = Path(tempfile.mkdtemp(prefix="arcade_agent_ref_"))
-    archive = subprocess.run(
-        ["git", "-C", str(repo_path), "archive", ref],
-        capture_output=True,
-        check=True,
-    )
-    subprocess.run(
-        ["tar", "-x", "-C", str(dest)],
-        input=archive.stdout,
-        check=True,
-        capture_output=True,
-    )
+    try:
+        archive = subprocess.run(
+            ["git", "-C", str(repo_path), "archive", ref],
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["tar", "-x", "-C", str(dest)],
+            input=archive.stdout,
+            check=True,
+            capture_output=True,
+        )
+    except BaseException:
+        shutil.rmtree(dest, ignore_errors=True)
+        raise
     return dest
 
 
@@ -345,7 +361,7 @@ def ingest(
             raise
         repo.version = ref
         repo.is_temp = True
-        repo.path = extracted
+        repo.temp_root = extracted
         return repo
 
     source_path = Path(source)

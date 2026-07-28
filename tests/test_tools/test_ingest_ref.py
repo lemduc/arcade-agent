@@ -91,3 +91,87 @@ def test_ingest_at_ref_cleans_up_extracted_dir_when_local_ingest_fails(
 
     after = set(tmp_root.glob("arcade_agent_ref_*"))
     assert after == before, f"leaked temp dirs: {after - before}"
+
+
+@pytest.fixture
+def src_layout_repo(tmp_path: Path) -> Path:
+    """A git repo with a Python `src/` package layout, tagged v1."""
+    repo = tmp_path / "src_repo"
+    repo.mkdir()
+    _run("git", "init", "-q", cwd=repo)
+    _run("git", "config", "user.email", "t@example.com", cwd=repo)
+    _run("git", "config", "user.name", "Test", cwd=repo)
+
+    pkg_dir = repo / "src" / "pkg"
+    pkg_dir.mkdir(parents=True)
+    (pkg_dir / "__init__.py").write_text("")
+    (pkg_dir / "mod.py").write_text("class Widget:\n    pass\n")
+    _run("git", "add", "-A", cwd=repo)
+    _run("git", "commit", "-q", "-m", "init", cwd=repo)
+    _run("git", "tag", "v1", cwd=repo)
+    return repo
+
+
+def test_ingest_at_ref_keeps_the_narrowed_source_root(src_layout_repo: Path):
+    """`path` must stay narrowed to `src/`, not the raw extraction root.
+
+    Narrowing is what lets the Python parser derive `pkg.mod` instead of
+    `src.pkg.mod` — the same result a plain (non-ref) ingest of the same
+    commit would produce. Overwriting `path` with the extraction root would
+    silently break that for every ref-ingested repo with a `src/` layout.
+    """
+    repo = ingest(str(src_layout_repo), language="python", ref="v1")
+    assert repo.path.name == "src"
+    repo.cleanup()
+
+
+def test_ingest_at_ref_produces_the_same_entity_fqns_as_a_plain_ingest(
+    src_layout_repo: Path,
+):
+    """The defect this pins: a ref-ingest must parse to the same FQNs a
+    plain ingest of the identical commit would, so that comparing a stored
+    baseline (plain ingest) against a ref-ingest doesn't manufacture a
+    removed-and-re-added diff for every entity.
+    """
+    from arcade_agent.tools.parse import parse
+
+    ref_repo = ingest(str(src_layout_repo), language="python", ref="v1")
+    ref_graph = parse(
+        source_path=str(ref_repo.path),
+        language="python",
+        files=[str(p) for p in ref_repo.source_files],
+        use_cache=False,
+    )
+
+    plain_repo = ingest(str(src_layout_repo), language="python")
+    plain_graph = parse(
+        source_path=str(plain_repo.path),
+        language="python",
+        files=[str(p) for p in plain_repo.source_files],
+        use_cache=False,
+    )
+
+    ref_repo.cleanup()
+    plain_repo.cleanup()
+
+    ref_fqns = set(ref_graph.entities.keys())
+    plain_fqns = set(plain_graph.entities.keys())
+    assert ref_fqns == plain_fqns
+    assert ref_fqns, "expected at least one parsed entity"
+    assert "pkg.mod.Widget" in ref_fqns
+
+
+def test_ingest_at_ref_cleanup_removes_the_whole_extracted_tree(
+    src_layout_repo: Path,
+):
+    """`cleanup()` must delete the full extraction, not just the narrowed
+    `src/` subdirectory `path` points at.
+    """
+    repo = ingest(str(src_layout_repo), language="python", ref="v1")
+    assert repo.temp_root is not None
+    assert repo.temp_root != repo.path
+    extraction_root = repo.temp_root
+
+    repo.cleanup()
+
+    assert not extraction_root.exists()
