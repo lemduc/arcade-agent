@@ -2,6 +2,9 @@
 
 import json
 import sys
+from types import SimpleNamespace
+
+import pytest
 
 from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 from scripts.run_self_analysis import (
@@ -175,3 +178,45 @@ def test_run_self_analysis_keeps_registration_like_helpers_by_default(tmp_path, 
 
     assert payload["num_entities"] >= 2
     assert payload["num_edges"] >= 1
+
+
+def test_self_analysis_forwards_exact_custom_exclusions(
+    tmp_path,
+    monkeypatch,
+):
+    captured: dict[str, object] = {}
+
+    def fake_ingest(source, **kwargs):
+        captured["source"] = source
+        captured["kwargs"] = kwargs
+        return SimpleNamespace(
+            source_files=[],
+            languages=[],
+            language="python",
+        )
+
+    monkeypatch.setattr(
+        "arcade_agent.ci.run_self_analysis.ingest",
+        fake_ingest,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "arcade-self-analysis",
+            "--source",
+            str(tmp_path),
+            "--exclude-dirs",
+            "integrationTest, src/e2e",
+            "--no-exclude-tests",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="1"):
+        run_self_analysis_main()
+
+    assert captured["kwargs"]["exclude_dirs"] == [
+        "integrationTest",
+        "src/e2e",
+    ]
+    assert captured["kwargs"]["exclude_tests"] is False

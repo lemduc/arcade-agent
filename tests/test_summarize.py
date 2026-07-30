@@ -5,6 +5,7 @@ from arcade_agent.tools.summarize import (
     _drill_down_package,
     _find_entry_points,
     _find_hotspots,
+    summarize,
 )
 
 
@@ -67,3 +68,21 @@ def test_drill_down_prefix_match(sample_graph):
     # "com.example" should match both sub-packages
     result = _drill_down_package(sample_graph, "com.example")
     assert result["num_entities"] == 3
+
+
+def test_summarize_excludes_exact_custom_directory(tmp_path):
+    main = tmp_path / "src/main/java/com/example/Main.java"
+    main.parent.mkdir(parents=True)
+    main.write_text("package com.example; public class Main {}\n")
+    custom_test = tmp_path / "e2e/java/com/example/E2eScenario.java"
+    custom_test.parent.mkdir(parents=True)
+    custom_test.write_text("package com.example; public class E2eScenario {}\n")
+
+    result = summarize(
+        str(tmp_path),
+        language="java",
+        use_cache=False,
+        exclude_dirs=["e2e"],
+    )
+
+    assert result["num_entities"] == 1

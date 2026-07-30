@@ -108,6 +108,8 @@ def test_legacy_drift_workflow_uses_default_branch_for_baseline_updates():
     workflow = (ROOT / ".github/workflows/arch-drift.yml").read_text()
 
     assert "github.event.repository.default_branch" in workflow
+    assert workflow.count("--filter-non-architectural-helpers") == 2
+    assert workflow.count("ARGS=(--source src ") == 2
     assert "refs/heads/main" not in workflow
     assert "stefanzweifel/git-auto-commit-action" not in workflow
     assert "contents: read" in workflow
@@ -140,6 +142,8 @@ def test_analyze_composite_action_provides_short_market_style_api():
     assert "arcade-agent-version:" in action
     assert f'default: "{version}"' in action
     assert "source-path:" in action
+    assert "exclude-dirs:" in action
+    assert "exclude-tests:" in action
     assert "baseline-branch:" in action
     assert "python -m pip install \"arcade-agent${INSTALL_EXTRAS}\"" in action
     assert "arcade-self-analysis" in action
@@ -166,11 +170,16 @@ def test_action_inputs_are_not_embedded_in_github_script_literals():
 
 def test_reusable_workflow_shell_steps_use_env_and_arrays_for_inputs():
     workflow = (ROOT / ".github/workflows/architecture-analysis-reusable.yml").read_text()
+    action = ANALYZE_ACTION.read_text()
 
     assert 'ARGS=(--source "target-repo/${SOURCE_PATH}")' in workflow
     assert 'ARGS+=(--language "${LANGUAGE}")' in workflow
+    assert 'ARGS+=(--exclude-dirs "${EXCLUDE_DIRS}")' in workflow
+    assert "ARGS+=(--no-exclude-tests)" in workflow
     assert 'ARGS+=(--repo-name "${REPO_NAME}")' in workflow
     assert '"${ARGS[@]}"' in workflow
+    assert 'ARGS+=(--exclude-dirs "${EXCLUDE_DIRS}")' in action
+    assert "ARGS+=(--no-exclude-tests)" in action
     assert 'LANGUAGE_ARGS="--language ${{ inputs.language }}"' not in workflow
     assert 'REPO_NAME_ARGS="--repo-name ${{ inputs.repo-name }}"' not in workflow
     assert '--algorithm "${{ inputs.primary-algorithm }}"' not in workflow

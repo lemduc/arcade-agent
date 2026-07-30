@@ -90,6 +90,7 @@ def test_analyze_forwards_recover_and_ingest_tuning_params(monkeypatch, tmp_path
             str(tmp_path),
             language="python",
             work_dir="/tmp/work",
+            exclude_dirs=["integrationTest", "src/e2e"],
             algorithm="wca",
             num_clusters=4,
             similarity_measure="js",
@@ -100,6 +101,7 @@ def test_analyze_forwards_recover_and_ingest_tuning_params(monkeypatch, tmp_path
     )
 
     assert captured["ingest"]["work_dir"] == "/tmp/work"
+    assert captured["ingest"]["exclude_dirs"] == ["integrationTest", "src/e2e"]
     assert captured["recover"]["algorithm"] == "wca"
     assert captured["recover"]["num_clusters"] == 4
     assert captured["recover"]["similarity_measure"] == "js"
