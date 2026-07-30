@@ -49,6 +49,12 @@ def test_ingest_at_ref_records_the_ref_as_version(two_tag_repo: Path):
     repo.cleanup()
 
 
+def test_ingest_at_ref_names_the_repo_after_the_source_repo(two_tag_repo: Path):
+    repo = ingest(str(two_tag_repo), language="python", ref="v1")
+    assert repo.name == two_tag_repo.name
+    repo.cleanup()
+
+
 def test_ingest_at_ref_does_not_touch_the_working_tree(two_tag_repo: Path):
     before = (two_tag_repo / "second.py").read_text()
     repo = ingest(str(two_tag_repo), language="python", ref="v1")

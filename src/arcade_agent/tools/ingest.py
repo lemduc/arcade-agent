@@ -366,6 +366,10 @@ def ingest(
         except BaseException:
             shutil.rmtree(extracted, ignore_errors=True)
             raise
+        # The extracted tree lives in a mkdtemp directory, so _ingest_local
+        # derives a meaningless name like "arcade_agent_ref_x1y2z3" — name the
+        # repo after the source repository instead.
+        repo.name = source_path.resolve().name
         repo.version = ref
         repo.is_temp = True
         repo.temp_root = extracted

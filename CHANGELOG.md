@@ -45,8 +45,12 @@ workflow builds from, not ahead of it.
   `compare`'s return also gains an additive `structural` key — the same
   provenance-derived classification `changelog_architecture` uses — carrying
   the accurate `added` / `removed` / `renamed` / `split` / `merged` /
-  `stable` component names. `matches` (the raw Hungarian 1:1 view) and
-  `summary.components_added` / `summary.components_removed` are unchanged.
+  `stable` component names. `matches` (the raw Hungarian 1:1 view) is
+  unchanged. `summary.components_added` / `summary.components_removed` keep
+  their keys but are now provenance-derived: a split product or a merge
+  source no longer counts as added/removed, so consumers asserting on the
+  old Hungarian-unmatched counts will see different numbers for those
+  scenarios.
 
 ### Fixed
 
