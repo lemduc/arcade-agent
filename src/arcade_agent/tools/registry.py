@@ -2,7 +2,12 @@
 
 import inspect
 from dataclasses import dataclass, field
-from typing import Any, Callable, get_type_hints
+from typing import Any, Callable, ParamSpec, TypeVar, get_type_hints
+
+P = ParamSpec("P")
+R = TypeVar("R")
+ToolCallable = Callable[..., Any]
+JsonSchema = dict[str, Any]
 
 _TOOLS: dict[str, "ToolDef"] = {}
 
@@ -13,16 +18,19 @@ class ToolDef:
 
     name: str
     description: str
-    fn: Callable
-    input_schema: dict = field(default_factory=dict)
-    output_schema: dict = field(default_factory=dict)
+    fn: ToolCallable
+    input_schema: JsonSchema = field(default_factory=dict)
+    output_schema: JsonSchema = field(default_factory=dict)
     is_async: bool = False
 
 
-def tool(name: str, description: str) -> Callable:
+def tool(
+    name: str,
+    description: str,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator to register a function as a tool."""
 
-    def decorator(fn: Callable) -> Callable:
+    def decorator(fn: Callable[P, R]) -> Callable[P, R]:
         _TOOLS[name] = ToolDef(
             name=name,
             description=description,
@@ -48,7 +56,7 @@ def list_tools() -> list[ToolDef]:
     return list(_TOOLS.values())
 
 
-_PYTHON_TYPE_TO_JSON: dict[type, str] = {
+_PYTHON_TYPE_TO_JSON: dict[type[Any], str] = {
     str: "string",
     int: "integer",
     float: "number",
@@ -58,7 +66,7 @@ _PYTHON_TYPE_TO_JSON: dict[type, str] = {
 }
 
 
-def _type_to_json_schema(tp: Any) -> dict:
+def _type_to_json_schema(tp: Any) -> JsonSchema:
     """Convert a Python type hint to a JSON schema fragment."""
     origin = getattr(tp, "__origin__", None)
 
@@ -85,7 +93,7 @@ def _type_to_json_schema(tp: Any) -> dict:
     return {"type": "object", "description": str(tp)}
 
 
-def _schema_from_hints(fn: Callable) -> dict:
+def _schema_from_hints(fn: ToolCallable) -> JsonSchema:
     """Extract JSON schema for function parameters from type hints."""
     try:
         hints = get_type_hints(fn)
@@ -118,7 +126,7 @@ def _schema_from_hints(fn: Callable) -> dict:
     return schema
 
 
-def _schema_from_return(fn: Callable) -> dict:
+def _schema_from_return(fn: ToolCallable) -> JsonSchema:
     """Extract JSON schema for function return type."""
     try:
         hints = get_type_hints(fn)

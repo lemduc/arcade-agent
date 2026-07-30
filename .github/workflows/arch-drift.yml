@@ -39,7 +39,7 @@ jobs:
         env:
           LANGUAGE: ${{ github.event.inputs.language }}
         run: |
-          ARGS=(--source .)
+          ARGS=(--source src --filter-non-architectural-helpers)
           if [ -n "${LANGUAGE}" ]; then
             ARGS+=(--language "${LANGUAGE}")
           fi
@@ -123,7 +123,7 @@ jobs:
         env:
           LANGUAGE: ${{ github.event.inputs.language }}
         run: |
-          ARGS=(--source .)
+          ARGS=(--source src --filter-non-architectural-helpers)
           if [ -n "${LANGUAGE}" ]; then
             ARGS+=(--language "${LANGUAGE}")
           fi

@@ -79,6 +79,10 @@ def _make_summary(obj: Any, label: str) -> dict:
         langs = getattr(obj, "languages")
         if langs:
             summary["languages"] = list(langs)
+    if hasattr(obj, "exclude_tests"):
+        summary["exclude_tests"] = bool(obj.exclude_tests)
+    if hasattr(obj, "exclude_dirs"):
+        summary["exclude_dirs"] = list(obj.exclude_dirs)
     metadata = getattr(obj, "metadata", None) if hasattr(obj, "num_entities") else None
     if isinstance(metadata, dict) and metadata:
         # Agents never see log lines; surface parse notes such as polyglot
@@ -119,8 +123,10 @@ def _resolve_parse_source(
     """Resolve an ingest session into the concrete inputs required by parse.
 
     MCP clients should not need to discover a temporary clone path or repeat the
-    language/file selection already made by ``ingest``. Explicit parse arguments
-    still take precedence when a caller intentionally wants a narrower parse.
+    language/file selection already made by ``ingest``. The ingest session's
+    selected files are explicit and therefore are not re-filtered by parse-level
+    exclusion options. Explicit parse arguments still take precedence when a
+    caller intentionally wants a narrower parse.
     """
     if source_path not in _session:
         return source_path, language, languages, files
@@ -171,6 +177,11 @@ def _build_server():  # type: ignore[no-untyped-def]
             "'parse', then pass the parse session_id as dep_graph to 'recover'. "
             "For polyglot repositories, pass languages such as ['java', 'kotlin'] "
             "to ingest; parse inherits that selection from the ingest session. "
+            "Source discovery excludes test/vendor/build directories by default; "
+            "set exclude_tests=false when those files are intentionally in scope, "
+            "or pass project-relative exclude_dirs for custom layouts. "
+            "Configure exclusions on ingest when chaining ingest to parse because "
+            "the ingest session carries an already-selected explicit file list. "
             "Cross-language edges are only linked within a language family "
             "(java+kotlin today); other language pairs are parsed and merged "
             "but never linked to each other."
@@ -187,6 +198,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         work_dir: str | None = None,
         exclude_tests: bool = True,
         source_root: str | None = None,
+        exclude_dirs: list[str] | None = None,
         max_tokens: int | None = None,
     ) -> str:
         """Prepare source code for analysis.
@@ -203,6 +215,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             work_dir: Directory to clone into. Uses temp dir if None.
             exclude_tests: Exclude test/vendor/build directories (default True).
             source_root: Override source root (e.g. 'src/main/java').
+            exclude_dirs: Additional exact project-relative directories to exclude
+                (e.g. ["integrationTest", "src/e2e"]).
             max_tokens: Optional token budget for the response.
         """
         from arcade_agent.tools.ingest import ingest as _ingest
@@ -214,6 +228,7 @@ def _build_server():  # type: ignore[no-untyped-def]
             work_dir=work_dir,
             exclude_tests=exclude_tests,
             source_root=source_root,
+            exclude_dirs=exclude_dirs,
         )
         summary = _make_summary(result, "IngestedRepo")
         return json.dumps(_apply_budget(summary, max_tokens), indent=2)
@@ -226,6 +241,8 @@ def _build_server():  # type: ignore[no-untyped-def]
         language: str | None = None,
         languages: list[str] | None = None,
         files: list[str] | None = None,
+        exclude_tests: bool = True,
+        exclude_dirs: list[str] | None = None,
         use_cache: bool = True,
         max_tokens: int | None = None,
     ) -> str:
@@ -243,13 +260,22 @@ def _build_server():  # type: ignore[no-untyped-def]
         Args:
             source_path: Root directory of the project, or a session ID returned by
                 ingest. An ingest session carries its selected files and languages
-                into this parse call unless explicitly overridden.
+                into this parse call unless explicitly overridden. Its files are
+                not re-filtered by parse-level exclusion options.
             language: Language to parse (java, python, c, typescript, go, kotlin),
                 or "multi" to parse every detected language and relink
                 cross-language edges.
             languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).
                 Mutually exclusive with language.
-            files: Specific files to parse. Discovers all if None.
+            files: Specific files to parse. An explicit list is authoritative.
+                Discovers automatically only when neither files nor an ingest
+                session supplies a list.
+            exclude_tests: Exclude test/vendor/build directories during automatic
+                discovery (default True). When source_path is an ingest session,
+                configure this on ingest instead.
+            exclude_dirs: Additional exact project-relative directories to exclude
+                during automatic discovery. When source_path is an ingest session,
+                configure these on ingest instead.
             use_cache: Return cached results when source files haven't changed.
             max_tokens: Optional token budget for the response.
         """
@@ -263,6 +289,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             language=language,
             languages=languages,
             files=files,
+            exclude_tests=exclude_tests,
+            exclude_dirs=exclude_dirs,
             use_cache=use_cache,
         )
         summary = _make_summary(graph, "DependencyGraph")
@@ -277,6 +305,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         source_root: str | None = None,
         work_dir: str | None = None,
         exclude_tests: bool = True,
+        exclude_dirs: list[str] | None = None,
         algorithm: str = "pkg",
         num_clusters: int | None = None,
         similarity_measure: str = "uem",
@@ -292,6 +321,22 @@ def _build_server():  # type: ignore[no-untyped-def]
         loop stays responsive. Per-stage session IDs are stored as each stage
         completes, so a later failure still leaves earlier artifacts reusable.
         Session IDs match the conventions of the fine-grained MCP tools.
+
+        Args:
+            source: Git repo URL or local directory path.
+            language: Optional language override, including "multi".
+            source_root: Optional source-root override.
+            work_dir: Directory used for remote clones.
+            exclude_tests: Exclude test/vendor/build directories (default True).
+            exclude_dirs: Additional exact project-relative directories to exclude.
+            algorithm: Architecture recovery algorithm.
+            num_clusters: Optional target cluster count.
+            similarity_measure: Similarity measure for supported algorithms.
+            pkg_depth: Optional package depth.
+            hybrid_weight: Hybrid recovery weight.
+            use_cache: Reuse parse caches when valid.
+            use_llm: Enable LLM-assisted smell explanations.
+            max_tokens: Optional token budget for the response.
         """
         from arcade_agent.tools.analyze import (
             PartialAnalysisError,
@@ -327,6 +372,7 @@ def _build_server():  # type: ignore[no-untyped-def]
                 source_root=source_root,
                 work_dir=work_dir,
                 exclude_tests=exclude_tests,
+                exclude_dirs=exclude_dirs,
                 algorithm=algorithm,
                 num_clusters=num_clusters,
                 similarity_measure=similarity_measure,
@@ -582,6 +628,8 @@ def _build_server():  # type: ignore[no-untyped-def]
         language: str | None = None,
         focus: str | None = None,
         use_cache: bool = True,
+        exclude_tests: bool = True,
+        exclude_dirs: list[str] | None = None,
         max_tokens: int | None = None,
     ) -> str:
         """Summarize a codebase for quick understanding.
@@ -594,6 +642,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             language: Language to parse (auto-detected if None).
             focus: Package name to drill into (e.g. "com.example.auth").
             use_cache: Use cached parse results when available.
+            exclude_tests: Exclude test/vendor/build directories (default True).
+            exclude_dirs: Additional exact project-relative directories to exclude.
             max_tokens: Optional token budget for the response.
         """
         from arcade_agent.tools.summarize import summarize as _summarize
@@ -603,6 +653,8 @@ def _build_server():  # type: ignore[no-untyped-def]
             language=language,
             focus=focus,
             use_cache=use_cache,
+            exclude_tests=exclude_tests,
+            exclude_dirs=exclude_dirs,
         )
         serialized = serialize_result(result)
         return json.dumps(_apply_budget(serialized, max_tokens), indent=2)

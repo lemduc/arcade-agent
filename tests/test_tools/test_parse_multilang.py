@@ -55,6 +55,151 @@ def test_parse_single_language_unchanged(fixtures_dir: Path):
     assert "com.example.mixed.KotlinService" not in java_only.entities
 
 
+def test_parse_direct_excludes_jvm_test_source_sets_by_default(
+    jvm_project_with_tests: Path,
+):
+    graph = parse(
+        str(jvm_project_with_tests),
+        languages=["java", "kotlin"],
+        use_cache=False,
+    )
+
+    assert set(graph.entities) == {
+        "com.example.LatestJava",
+        "com.example.MainJava",
+        "com.example.MainKotlin",
+    }
+
+
+def test_parse_direct_can_include_jvm_test_source_sets(
+    jvm_project_with_tests: Path,
+):
+    graph = parse(
+        str(jvm_project_with_tests),
+        languages=["java", "kotlin"],
+        use_cache=False,
+        exclude_tests=False,
+    )
+
+    assert "com.example.UnitJavaTest" in graph.entities
+    assert "com.example.UnitKotlinTest" in graph.entities
+    assert "com.example.IntegrationJavaTest" in graph.entities
+    assert "com.example.FixtureKotlin" in graph.entities
+
+
+def test_parse_direct_excludes_exact_custom_directories(
+    jvm_project_with_custom_layout: Path,
+):
+    graph = parse(
+        str(jvm_project_with_custom_layout),
+        languages=["java", "kotlin"],
+        use_cache=False,
+        exclude_dirs=["integrationTest", "src/e2e", "modules/api/spec"],
+    )
+
+    assert set(graph.entities) == {
+        "com.example.Main",
+        "com.example.ProductionSupport",
+    }
+
+
+def test_parse_cache_separates_custom_exclusion_sets(
+    jvm_project_with_custom_layout: Path,
+):
+    without_integration = parse(
+        str(jvm_project_with_custom_layout),
+        languages=["java", "kotlin"],
+        use_cache=True,
+        exclude_dirs=["integrationTest"],
+    )
+    without_e2e = parse(
+        str(jvm_project_with_custom_layout),
+        languages=["java", "kotlin"],
+        use_cache=True,
+        exclude_dirs=["src/e2e"],
+    )
+
+    assert "com.example.CustomIntegration" not in without_integration.entities
+    assert "com.example.E2eScenario" in without_integration.entities
+    assert "com.example.CustomIntegration" in without_e2e.entities
+    assert "com.example.E2eScenario" not in without_e2e.entities
+
+
+def test_parse_multi_detection_ignores_language_only_in_custom_exclusion(
+    jvm_project_with_custom_layout: Path,
+):
+    graph = parse(
+        str(jvm_project_with_custom_layout),
+        language="multi",
+        use_cache=False,
+        exclude_dirs=["src/e2e"],
+    )
+
+    assert {entity.language for entity in graph.entities.values()} == {"java"}
+    assert "com.example.E2eScenario" not in graph.entities
+
+
+def test_parse_auto_detection_ignores_test_only_language(tmp_path: Path):
+    java_main = tmp_path / "src/main/java/com/example/Main.java"
+    java_main.parent.mkdir(parents=True)
+    java_main.write_text("package com.example; public class Main {}\n")
+    kotlin_test = tmp_path / "src/test/kotlin/com/example/OnlyInTests.kt"
+    kotlin_test.parent.mkdir(parents=True)
+    kotlin_test.write_text("package com.example\nclass OnlyInTests\n")
+
+    graph = parse(str(tmp_path), use_cache=False)
+
+    assert set(graph.entities) == {"com.example.Main"}
+    assert {entity.language for entity in graph.entities.values()} == {"java"}
+
+
+def test_parse_multi_detection_ignores_test_only_language(tmp_path: Path):
+    java_main = tmp_path / "src/main/java/com/example/Main.java"
+    java_main.parent.mkdir(parents=True)
+    java_main.write_text("package com.example; public class Main {}\n")
+    kotlin_test = tmp_path / "src/test/kotlin/com/example/OnlyInTests.kt"
+    kotlin_test.parent.mkdir(parents=True)
+    kotlin_test.write_text("package com.example\nclass OnlyInTests\n")
+
+    graph = parse(str(tmp_path), language="multi", use_cache=False)
+
+    assert set(graph.entities) == {"com.example.Main"}
+    assert {entity.language for entity in graph.entities.values()} == {"java"}
+
+
+def test_parse_explicit_files_are_authoritative(jvm_project_with_tests: Path):
+    explicit_test = (
+        jvm_project_with_tests
+        / "src/test/java/com/example/UnitJavaTest.java"
+    )
+
+    graph = parse(
+        str(jvm_project_with_tests),
+        language="java",
+        files=[str(explicit_test)],
+        use_cache=False,
+    )
+
+    assert set(graph.entities) == {"com.example.UnitJavaTest"}
+
+
+def test_parse_cache_separates_test_exclusion_modes(jvm_project_with_tests: Path):
+    without_tests = parse(
+        str(jvm_project_with_tests),
+        language="java",
+        use_cache=True,
+    )
+    with_tests = parse(
+        str(jvm_project_with_tests),
+        language="java",
+        use_cache=True,
+        exclude_tests=False,
+    )
+
+    assert "com.example.UnitJavaTest" not in without_tests.entities
+    assert "com.example.UnitJavaTest" in with_tests.entities
+
+
 def test_parse_rejects_language_and_languages_together(fixtures_dir: Path):
     root = fixtures_dir / "java_kotlin_mixed"
     with pytest.raises(ValueError, match="language and languages"):

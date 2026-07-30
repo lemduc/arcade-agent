@@ -119,6 +119,131 @@ class TestMcpMultilangE2E:
         assert "com.example.JavaGreeter" in entity_fqns
         assert "com.example.KotlinGreeter" in entity_fqns
 
+    def test_direct_parse_excludes_jvm_tests_by_default(
+        self,
+        server,
+        jvm_project_with_tests: Path,
+    ):
+        parse_result = _call(
+            server,
+            "parse",
+            {
+                "source_path": str(jvm_project_with_tests),
+                "languages": ["java", "kotlin"],
+                "use_cache": False,
+            },
+        )
+
+        full = _call(
+            server,
+            "get_full_result",
+            {"session_id": parse_result["session_id"]},
+        )
+        entity_fqns = set(full["data"]["entities"])
+        assert entity_fqns == {
+            "com.example.LatestJava",
+            "com.example.MainJava",
+            "com.example.MainKotlin",
+        }
+
+    def test_ingest_parse_chain_preserves_include_tests_override(
+        self,
+        server,
+        jvm_project_with_tests: Path,
+    ):
+        ingest_result = _call(
+            server,
+            "ingest",
+            {
+                "source": str(jvm_project_with_tests),
+                "languages": ["java", "kotlin"],
+                "exclude_tests": False,
+            },
+        )
+        parse_result = _call(
+            server,
+            "parse",
+            {
+                "source_path": ingest_result["session_id"],
+                "use_cache": False,
+            },
+        )
+        full = _call(
+            server,
+            "get_full_result",
+            {"session_id": parse_result["session_id"]},
+        )
+        entity_fqns = set(full["data"]["entities"])
+        assert "com.example.UnitJavaTest" in entity_fqns
+        assert "com.example.UnitKotlinTest" in entity_fqns
+        assert "com.example.IntegrationJavaTest" in entity_fqns
+        assert "com.example.FixtureKotlin" in entity_fqns
+
+    def test_direct_parse_honors_exact_custom_exclusions(
+        self,
+        server,
+        jvm_project_with_custom_layout: Path,
+    ):
+        parse_result = _call(
+            server,
+            "parse",
+            {
+                "source_path": str(jvm_project_with_custom_layout),
+                "languages": ["java", "kotlin"],
+                "exclude_dirs": [
+                    "integrationTest",
+                    "src/e2e",
+                    "modules/api/spec",
+                ],
+                "use_cache": False,
+            },
+        )
+        full = _call(
+            server,
+            "get_full_result",
+            {"session_id": parse_result["session_id"]},
+        )
+
+        assert set(full["data"]["entities"]) == {
+            "com.example.Main",
+            "com.example.ProductionSupport",
+        }
+
+    def test_parse_exclusions_do_not_refilter_ingest_session(
+        self,
+        server,
+        jvm_project_with_custom_layout: Path,
+    ):
+        ingest_result = _call(
+            server,
+            "ingest",
+            {
+                "source": str(jvm_project_with_custom_layout),
+                "languages": ["java", "kotlin"],
+            },
+        )
+        assert ingest_result["exclude_tests"] is True
+        assert ingest_result["exclude_dirs"] == []
+
+        parse_result = _call(
+            server,
+            "parse",
+            {
+                "source_path": ingest_result["session_id"],
+                "exclude_dirs": ["integrationTest", "src/e2e"],
+                "use_cache": False,
+            },
+        )
+        full = _call(
+            server,
+            "get_full_result",
+            {"session_id": parse_result["session_id"]},
+        )
+
+        # The ingest session supplies an authoritative explicit file list.
+        assert "com.example.CustomIntegration" in full["data"]["entities"]
+        assert "com.example.E2eScenario" in full["data"]["entities"]
+
     def test_parse_rejects_non_ingest_source_session(self, server):
         from mcp.server.fastmcp.exceptions import ToolError
 

@@ -1,5 +1,7 @@
 """Tests for MCP server adapter."""
 
+import asyncio
+
 import pytest
 
 from arcade_agent.parsers.graph import DependencyGraph
@@ -69,6 +71,25 @@ def test_serialize_result_path():
 # ---------------------------------------------------------------------------
 # Session store tests
 # ---------------------------------------------------------------------------
+
+
+def test_source_discovery_tools_document_default_test_exclusion():
+    pytest.importorskip("mcp", reason="mcp extra not installed")
+    from arcade_agent.tools.adapters.mcp import get_server
+
+    tools = {
+        tool.name: tool
+        for tool in asyncio.run(get_server().list_tools())
+    }
+
+    for name in ("ingest", "parse", "analyze", "summarize"):
+        tool = tools[name]
+        schema = tool.inputSchema
+        assert schema["properties"]["exclude_tests"]["default"] is True
+        assert "exclude_tests" in (tool.description or "")
+        assert "default True" in (tool.description or "")
+        assert schema["properties"]["exclude_dirs"]["default"] is None
+        assert "exclude_dirs" in (tool.description or "")
 
 
 def test_session_store_and_resolve(sample_graph):
@@ -150,6 +171,25 @@ def test_make_summary_architecture(sample_architecture):
     assert len(summary["components"]) == 2
     assert summary["components"][0]["name"] == "Calc"
     assert summary["components"][0]["num_entities"] == 2
+
+
+def test_make_summary_ingested_repo_includes_exclusion_snapshot(tmp_path):
+    from arcade_agent.tools.adapters.mcp import _make_summary, _session
+    from arcade_agent.tools.ingest import IngestedRepo
+
+    _session.clear()
+    repository = IngestedRepo(
+        path=tmp_path,
+        name="sample",
+        version="local",
+        exclude_tests=False,
+        exclude_dirs=["integrationTest", "src/e2e"],
+    )
+
+    summary = _make_summary(repository, "IngestedRepo")
+
+    assert summary["exclude_tests"] is False
+    assert summary["exclude_dirs"] == ["integrationTest", "src/e2e"]
 
 
 # ---------------------------------------------------------------------------

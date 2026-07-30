@@ -12,10 +12,19 @@ Usage:
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
+from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.coupling import compute_balanced_scores
+from arcade_agent.algorithms.metrics import MetricResult
+from arcade_agent.algorithms.smells import SmellInstance
+from arcade_agent.ci.graph_filter import (
+    SELF_DOGFOOD_PROFILE,
+    _filter_non_architectural_entities,
+)
 from arcade_agent.display import display_value
 from arcade_agent.exporters.changelog_md import render_changelog_markdown
+from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.serialization import load_architecture, save_architecture
 from arcade_agent.tools.changelog_architecture import changelog_architecture
 from arcade_agent.tools.compare import compare
@@ -68,13 +77,14 @@ _SMELL_RECOMMENDATIONS = {
 
 
 def build_report(
-    current,
-    graph,
-    metrics,
-    smells,
-    drift=None,
-    baseline=None,
-    baseline_metrics=None,
+    current: Architecture,
+    graph: DependencyGraph,
+    metrics: list[MetricResult],
+    smells: list[SmellInstance],
+    drift: dict[str, Any] | None = None,
+    baseline: Architecture | None = None,
+    baseline_metrics: dict[str, float] | None = None,
+    baseline_note: str | None = None,
 ) -> str:
     """Build a markdown drift report.
 
@@ -86,6 +96,7 @@ def build_report(
         drift: Optional compare() result dict (if baseline exists).
         baseline: Optional baseline Architecture.
         baseline_metrics: Optional dict of baseline metric name→value.
+        baseline_note: Optional explanation when baseline comparison is skipped.
 
     Returns:
         Markdown string.
@@ -101,6 +112,8 @@ def build_report(
         f"**Components:** {num_components}",
         "",
     ]
+    if baseline_note:
+        lines.extend([f"> {baseline_note}", ""])
 
     # ── Drift table (only when baseline exists) ──────────────────────────
     if drift and baseline:
@@ -181,9 +194,11 @@ def build_report(
     lines.append("")
     lines.append("| Component | Entities | Responsibility |")
     lines.append("|-----------|----------|----------------|")
-    for comp in sorted(current.components, key=lambda c: -len(c.entities)):
-        resp = (comp.responsibility or "")[:60]
-        lines.append(f"| {comp.name} | {len(comp.entities)} | {resp} |")
+    for component in sorted(current.components, key=lambda c: -len(c.entities)):
+        resp = (component.responsibility or "")[:60]
+        lines.append(
+            f"| {component.name} | {len(component.entities)} | {resp} |"
+        )
     lines.append("")
 
     # ── Mermaid dependency diagram ───────────────────────────────────────
@@ -193,18 +208,18 @@ def build_report(
     lines.append("graph LR")
     # Build inter-component edges from the dependency graph
     entity_to_comp: dict[str, str] = {}
-    for comp in current.components:
-        for ent in comp.entities:
-            entity_to_comp[ent] = comp.name
+    for component in current.components:
+        for ent in component.entities:
+            entity_to_comp[ent] = component.name
     comp_edges: set[tuple[str, str]] = set()
     for edge in graph.edges:
         src_comp = entity_to_comp.get(edge.source)
         tgt_comp = entity_to_comp.get(edge.target)
         if src_comp and tgt_comp and src_comp != tgt_comp:
             comp_edges.add((src_comp, tgt_comp))
-    for comp in current.components:
-        safe = comp.name.replace(" ", "_")
-        lines.append(f"    {safe}[\"{comp.name}\"]")
+    for component in current.components:
+        safe = component.name.replace(" ", "_")
+        lines.append(f"    {safe}[\"{component.name}\"]")
     for src, tgt in sorted(comp_edges):
         safe_src = src.replace(" ", "_")
         safe_tgt = tgt.replace(" ", "_")
@@ -307,6 +322,14 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Overwrite the baseline with the current architecture",
     )
+    parser.add_argument(
+        "--filter-non-architectural-helpers",
+        action="store_true",
+        help=(
+            "Apply the Arcade Agent self-dogfooding graph profile so private "
+            "helpers, methods, and registration edges do not distort architecture."
+        ),
+    )
     args = parser.parse_args(argv)
 
     source_path = Path(args.source).resolve()
@@ -314,17 +337,32 @@ def main(argv: list[str] | None = None) -> None:
 
     # 1. Parse
     graph = parse(str(source_path), language=args.language)
+    if args.filter_non_architectural_helpers:
+        graph = _filter_non_architectural_entities(graph)
 
     # 2. Recover
     current = recover(graph, algorithm="pkg")
+    if args.filter_non_architectural_helpers:
+        current.metadata["analysis_profile"] = SELF_DOGFOOD_PROFILE
 
     # 3. Load baseline and compare (if it exists)
     drift = None
     baseline = None
+    baseline_note = None
     baseline_metrics: dict[str, float] = {}
     if baseline_path.exists():
         baseline, baseline_metrics = load_architecture(baseline_path)
-        drift = compare(baseline, current)
+        baseline_profile = baseline.metadata.get("analysis_profile")
+        current_profile = current.metadata.get("analysis_profile")
+        if baseline_profile == current_profile:
+            drift = compare(baseline, current)
+        else:
+            baseline_note = (
+                "Baseline comparison skipped because the stored baseline uses "
+                f"profile {baseline_profile or 'default'!r}, while this run uses "
+                f"{current_profile or 'default'!r}. The next default-branch push "
+                "will refresh the baseline with the current profile."
+            )
 
     # 4. Metrics and smells
     metrics = compute_metrics(current, graph)
@@ -345,7 +383,14 @@ def main(argv: list[str] | None = None) -> None:
 
     # 6. Print report
     report = build_report(
-        current, graph, metrics, smells, drift, baseline, baseline_metrics
+        current,
+        graph,
+        metrics,
+        smells,
+        drift,
+        baseline,
+        baseline_metrics,
+        baseline_note,
     )
     print(report)
 

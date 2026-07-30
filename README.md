@@ -190,6 +190,17 @@ Add to your Claude Code MCP settings:
 3. **Token budget** — Every tool accepts an optional `max_tokens` parameter. Outputs are progressively truncated (entity details → edge summaries → component counts) to fit.
 4. **Parse caching** — Parsed dependency graphs are cached to `.arcade-cache/` keyed by file modification times. Repeated analysis of the same codebase skips re-parsing.
 5. **On-demand detail** — Call `get_full_result(session_id)` to retrieve complete data when the summary isn't enough.
+6. **Production-source default** — `ingest`, `analyze`, and automatic `parse`
+   discovery exclude test/vendor/build directories by default. Set
+   `exclude_tests=false` to include them; an explicit `parse(files=[...])` list
+   is always honored. For custom layouts, pass exact project-relative directory
+   prefixes such as `exclude_dirs=["integrationTest", "src/e2e"]`. These values
+   are not globs and apply only to the named directory and its descendants.
+
+The built-in policy treats any directory segment named `test` or `tests` as
+non-production, including a package such as `src/main/java/com/example/test`.
+Use `exclude_tests=false` if that convention is production code, then provide
+only the precise custom exclusions needed through `exclude_dirs`.
 
 ### Example agent workflow
 
@@ -220,6 +231,21 @@ Agent: call ingest(source="/path/to/project", languages=["java", "kotlin"])
 
 Agent: call parse(source_path="p1q2r3")
        → {session_id: "a1b2c3", num_entities: 420, num_edges: 960, ...}
+```
+
+An ingest session carries an already-selected explicit file list. Therefore,
+`exclude_tests` and `exclude_dirs` on a subsequent `parse` call do not re-filter
+that session. Configure exclusions on `ingest`, or pass your own authoritative
+`files=[...]` list to `parse`.
+
+For a repository with non-standard test locations:
+
+```
+Agent: call analyze(
+  source="/path/to/project",
+  language="multi",
+  exclude_dirs=["integrationTest", "src/e2e", "modules/api/spec"]
+)
 ```
 
 Use `language="multi"` instead when every detected supported language should
@@ -299,6 +325,8 @@ Common optional inputs:
           arcade-agent-version: "0.2.0"
           source-path: "."
           language: ""
+          exclude-tests: "true"
+          exclude-dirs: "integrationTest,src/e2e"
           primary-algorithm: pkg
           run-secondary-analyses: "true"
           baseline-branch: ""

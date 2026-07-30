@@ -130,13 +130,16 @@ def _drill_down_package(graph: DependencyGraph, package: str) -> dict:
     name="summarize",
     description="Summarize a codebase for quick understanding. Returns package structure, "
     "dependency hotspots, and entry points. Use focus parameter to drill into a "
-    "specific package or area.",
+    "specific package or area. Source discovery supports exact custom directory "
+    "exclusions.",
 )
 def summarize(
     source_path: str,
     language: str | None = None,
     focus: str | None = None,
     use_cache: bool = True,
+    exclude_tests: bool = True,
+    exclude_dirs: list[str] | None = None,
 ) -> dict:
     """Summarize a codebase or drill into a specific area.
 
@@ -146,11 +149,19 @@ def summarize(
         focus: Package name to drill into (e.g. "com.example.auth").
             If None, returns a top-level overview.
         use_cache: Use cached parse results when available.
+        exclude_tests: Exclude test/vendor/build directories (default: True).
+        exclude_dirs: Additional exact project-relative directories to exclude.
 
     Returns:
         Dict with codebase summary or focused drill-down.
     """
-    graph = parse(source_path=source_path, language=language, use_cache=use_cache)
+    graph = parse(
+        source_path=source_path,
+        language=language,
+        use_cache=use_cache,
+        exclude_tests=exclude_tests,
+        exclude_dirs=exclude_dirs,
+    )
 
     if focus:
         return _drill_down_package(graph, focus)
