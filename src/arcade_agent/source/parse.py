@@ -105,8 +105,13 @@ def _parse_one(
     file_paths: list[Path],
     root: Path,
     use_cache: bool,
+    exclude_tests: bool = True,
 ) -> DependencyGraph:
+    # ``get_parser`` returns a fresh instance per call, so setting the flag here
+    # cannot leak across languages or calls. Path-based filtering alone cannot
+    # reach inline test code such as Rust's ``#[cfg(test)] mod tests``.
     parser = get_parser(language)
+    parser.exclude_tests = exclude_tests
     if not file_paths:
         return DependencyGraph()
     if use_cache and hasattr(parser, "parse_incremental"):
@@ -172,7 +177,9 @@ def parse(
             explicit list is authoritative and is not filtered.
         use_cache: If True, return cached results when source files haven't changed.
         exclude_tests: Exclude test/vendor/build directories during automatic
-            file discovery (default: True).
+            file discovery (default: True). Also passed to the parser, so
+            parsers that recognize *inline* test constructs (Rust's
+            ``#[cfg(test)]``) leave them out of the graph as well.
         exclude_dirs: Additional exact project-relative directories to exclude
             during automatic discovery. Explicit files are always honored.
 
@@ -203,7 +210,7 @@ def parse(
         cache_lang = f"{cache_lang or 'auto'}|{exclusion_namespace}"
 
     if use_cache:
-        key = cache_key(source_path, cache_lang, files)
+        key = cache_key(source_path, cache_lang, files, exclude_tests)
         cached = get_cached_graph(source_path, key)
         if cached is not None:
             return cached
@@ -233,16 +240,19 @@ def parse(
         )
 
     if len(resolved) == 1:
-        graph = _parse_one(resolved[0], per_language[resolved[0]], root, use_cache)
+        graph = _parse_one(
+            resolved[0], per_language[resolved[0]], root, use_cache, exclude_tests
+        )
     else:
         graphs = [
-            _parse_one(lang, per_language[lang], root, use_cache) for lang in resolved
+            _parse_one(lang, per_language[lang], root, use_cache, exclude_tests)
+            for lang in resolved
         ]
         graphs = [g for g in graphs if g.num_entities or g.num_edges]
         graph = merge_and_relink(*graphs) if graphs else DependencyGraph()
 
     if use_cache:
-        key = cache_key(source_path, cache_lang, files)
+        key = cache_key(source_path, cache_lang, files, exclude_tests)
         put_cached_graph(source_path, key, graph)
 
     return graph

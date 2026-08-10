@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -60,6 +61,7 @@ _LANG_EXTENSIONS: dict[str, list[str]] = {
     "c": [".c", ".h", ".cpp", ".hpp", ".cc", ".cxx"],
     "go": [".go"],
     "kotlin": [".kt", ".kts"],
+    "rust": [".rs"],
 }
 
 # Reverse mapping
@@ -135,12 +137,30 @@ def _detect_languages(
     return sorted(found)
 
 
+def _is_cargo_workspace(path: Path) -> bool:
+    """Whether *path* holds a Cargo.toml declaring a ``[workspace]``."""
+    manifest = path / "Cargo.toml"
+    try:
+        if not manifest.is_file():
+            return False
+        with manifest.open("rb") as manifest_file:
+            return "workspace" in tomllib.load(manifest_file)
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError):
+        return False
+
+
 def _detect_source_root(path: Path, language: str | None = None) -> Path:
     """Detect the main source root directory.
 
     Prefers a language-specific Maven/Gradle root when *language* is set.
     Falls back to well-known roots, then the project root.
     """
+    # A Cargo workspace holds a root crate plus member crates under arbitrary
+    # directories. Narrowing it to the root's ``src`` would silently drop every
+    # member, so this probe must run before the generic source-root candidates.
+    if language == "rust" and _is_cargo_workspace(path):
+        return path
+
     if language:
         preferred = _LANG_PREFERRED_ROOTS.get(language)
         if preferred and (path / preferred).is_dir():
@@ -327,7 +347,7 @@ def ingest(
     Args:
         source: Git repo URL or local directory path.
         language: Override language detection (java, python, typescript, c, go,
-            kotlin, or "multi" to ingest every detected language).
+            kotlin, rust, or "multi" to ingest every detected language).
         languages: Explicit language list for polyglot ingest (e.g. ["java", "kotlin"]).
             Mutually exclusive with *language*.
         work_dir: Directory to clone into. Uses temp dir if None. Ignored when

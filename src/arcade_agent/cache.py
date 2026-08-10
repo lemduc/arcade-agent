@@ -20,7 +20,18 @@ def _cache_dir(project_root: Path) -> Path:
     return project_root / _CACHE_DIR
 
 
-def cache_key(source_path: str, language: str | None, files: list[str] | None) -> str:
+_SOURCE_SUFFIXES = {
+    ".java", ".py", ".c", ".cpp", ".h", ".hpp", ".ts", ".tsx", ".js", ".jsx",
+    ".go", ".kt", ".kts", ".rs",
+}
+
+
+def cache_key(
+    source_path: str,
+    language: str | None,
+    files: list[str] | None,
+    exclude_tests: bool = True,
+) -> str:
     """Compute a cache key from source path, language, and file mtimes.
 
     The key is a SHA-256 hash of the sorted file paths and their modification
@@ -31,6 +42,9 @@ def cache_key(source_path: str, language: str | None, files: list[str] | None) -
         source_path: Root directory of the project.
         language: Language being parsed (or None for auto-detect).
         files: Specific files to parse, or None to discover all.
+        exclude_tests: Whether inline test code is excluded. Parsers that honor
+            it (Rust) produce a different graph for the same file list, so it
+            must take part in the key.
 
     Returns:
         A hex digest string usable as a cache filename.
@@ -39,17 +53,27 @@ def cache_key(source_path: str, language: str | None, files: list[str] | None) -
     hasher = hashlib.sha256()
     hasher.update(str(root).encode())
     hasher.update((language or "auto").encode())
+    hasher.update(b"tests:excluded" if exclude_tests else b"tests:included")
 
     if files:
-        file_paths = sorted(files)
+        file_paths = set(files)
     else:
         # Hash all source-like files under root
-        file_paths = sorted(str(f) for f in root.rglob("*") if f.is_file() and f.suffix in {
-            ".java", ".py", ".c", ".cpp", ".h", ".hpp", ".ts", ".tsx", ".js", ".jsx",
-            ".go", ".kt", ".kts",
-        })
+        file_paths = {
+            str(f) for f in root.rglob("*") if f.is_file() and f.suffix in _SOURCE_SUFFIXES
+        }
 
-    for fp in file_paths:
+    # Rust module layout and crate names come from Cargo manifests, so editing
+    # one changes the graph without touching any .rs file.
+    tracks_rust = language is None or "rust" in language or any(
+        fp.endswith(".rs") for fp in file_paths
+    )
+    if tracks_rust:
+        file_paths.update(
+            str(manifest) for manifest in root.rglob("Cargo.toml") if manifest.is_file()
+        )
+
+    for fp in sorted(file_paths):
         p = Path(fp)
         hasher.update(fp.encode())
         if p.exists():
