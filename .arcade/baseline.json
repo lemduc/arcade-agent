@@ -34,6 +34,14 @@
         "arcade_agent.algorithms.matching.compute_a2a_similarity",
         "arcade_agent.algorithms.matching.match_components",
         "arcade_agent.algorithms.metrics.MetricResult",
+        "arcade_agent.algorithms.provenance.Flow",
+        "arcade_agent.algorithms.provenance.Merge",
+        "arcade_agent.algorithms.provenance.Rewrite",
+        "arcade_agent.algorithms.provenance.Split",
+        "arcade_agent.algorithms.provenance.StructuralChanges",
+        "arcade_agent.algorithms.provenance.classify_structural_changes",
+        "arcade_agent.algorithms.provenance.entity_flows",
+        "arcade_agent.algorithms.provenance.structural_dict",
         "arcade_agent.algorithms.similarity.compute_similarity_matrix",
         "arcade_agent.algorithms.similarity.jaccard_similarity",
         "arcade_agent.algorithms.similarity.structure_coupling_measure",
@@ -81,11 +89,19 @@
       ]
     },
     {
+      "name": "Display",
+      "responsibility": "Entities in display",
+      "entities": [
+        "arcade_agent.display.display_value"
+      ]
+    },
+    {
       "name": "Exporters",
       "responsibility": "Entities in exporters",
       "entities": [
         "arcade_agent.ci.compare_baseline.build_comment",
         "arcade_agent.ci.compare_baseline.main",
+        "arcade_agent.exporters.changelog_md.render_changelog_markdown",
         "arcade_agent.exporters.dot.export_dot",
         "arcade_agent.exporters.html.AlgorithmResult",
         "arcade_agent.exporters.html.build_snapshot_mermaid",
@@ -174,6 +190,7 @@
         "arcade_agent.tools.analyze.PartialAnalysisError",
         "arcade_agent.tools.analyze.analyze",
         "arcade_agent.tools.api_surface.api_surface",
+        "arcade_agent.tools.changelog_architecture.changelog_architecture",
         "arcade_agent.tools.compare.compare",
         "arcade_agent.tools.compute_metrics.compute_metrics",
         "arcade_agent.tools.context_for_task.context_for_task",
@@ -194,19 +211,19 @@
     }
   ],
   "metrics": {
-    "RCI": 0.5669,
-    "TurboMQ": 2.6172,
-    "BasicMQ": 0.2617,
-    "IntraConnectivity": 0.0197,
-    "InterConnectivity": 0.0388,
+    "RCI": 0.5441,
+    "TurboMQ": 2.6232,
+    "BasicMQ": 0.2385,
+    "IntraConnectivity": 0.0175,
+    "InterConnectivity": 0.0519,
     "TwoWayPairRatio": 0.0,
-    "DependencyHealth": 0.9787,
-    "ComponentBalance": 0.5394,
-    "HubBalance": 0.5556,
-    "BoundaryClarity": 0.9444,
-    "DependencyDistribution": 0.675,
-    "SmellDiscipline": 0.94,
-    "PrincipleAlignmentScore": 0.8662,
-    "BalancedArchitectureScore": 0.6284
+    "DependencyHealth": 0.9715,
+    "ComponentBalance": 0.4769,
+    "HubBalance": 0.5,
+    "BoundaryClarity": 0.9545,
+    "DependencyDistribution": 0.6294,
+    "SmellDiscipline": 0.9455,
+    "PrincipleAlignmentScore": 0.8517,
+    "BalancedArchitectureScore": 0.6126
   }
 }
