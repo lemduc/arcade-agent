@@ -1,0 +1,171 @@
+"""Tests for the changelog_architecture tool."""
+
+from arcade_agent.algorithms.architecture import Architecture, Component
+from arcade_agent.algorithms.metrics import MetricResult
+from arcade_agent.algorithms.smells import SmellInstance, SmellType
+from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.tools.changelog_architecture import _smell_dict, changelog_architecture
+
+
+def _arch(**components: list[str]) -> Architecture:
+    return Architecture(
+        components=[
+            Component(name=name, responsibility="", entities=list(entities))
+            for name, entities in components.items()
+        ],
+        algorithm="test",
+    )
+
+
+def _empty_graph() -> DependencyGraph:
+    return DependencyGraph()
+
+
+def test_reports_structural_changes():
+    arch_a = _arch(auth=["a.A", "a.B", "a.C", "z.X", "z.Y", "z.Z"])
+    arch_b = _arch(auth=["a.A", "a.B", "a.C"], authz=["z.X", "z.Y", "z.Z"])
+    result = changelog_architecture(
+        arch_a, _empty_graph(), arch_b, _empty_graph(),
+        smells_a=[], smells_b=[], metrics_a=[], metrics_b=[],
+    )
+    assert result["components"]["split"] == [
+        {"from": "auth", "into": ["auth", "authz"],
+         "entities": {"auth": 3, "authz": 3}}
+    ]
+    # note: structural_dict (algorithms/provenance.py) converts Split.entities
+    # (a tuple of pairs) into a plain dict for the output, so the serialised
+    # shape stays dict-shaped.
+    assert result["components"]["added"] == []
+
+
+def test_reports_responsibility_shifts_at_entity_granularity():
+    arch_a = _arch(auth=["a.A", "a.B", "a.C"], api=["p.1", "p.2", "p.3"])
+    arch_b = _arch(auth=["a.A", "a.B"], api=["p.1", "p.2", "p.3", "a.C"])
+    result = changelog_architecture(
+        arch_a, _empty_graph(), arch_b, _empty_graph(),
+        smells_a=[], smells_b=[], metrics_a=[], metrics_b=[],
+    )
+    assert {"entity": "a.C", "from": "auth", "to": "api"} in result["responsibility_shifts"]
+
+
+def test_smell_survives_a_rename_without_spurious_churn():
+    arch_a = _arch(util=["u.1", "u.2", "u.3"])
+    arch_b = _arch(common=["u.1", "u.2", "u.3"])
+    smell_a = SmellInstance(smell_type="BDC", severity="high", affected_components=["util"])
+    smell_b = SmellInstance(smell_type="BDC", severity="high", affected_components=["common"])
+    result = changelog_architecture(
+        arch_a, _empty_graph(), arch_b, _empty_graph(),
+        smells_a=[smell_a], smells_b=[smell_b], metrics_a=[], metrics_b=[],
+    )
+    assert result["smells"]["new"] == []
+    assert result["smells"]["resolved"] == []
+    assert len(result["smells"]["persisting"]) == 1
+
+
+def test_smell_on_a_split_component_is_reported_as_resolved_and_new():
+    # auth (6 entities) splits into auth (3) + authz (3), mirroring
+    # test_reports_structural_changes. A split source has no unambiguous
+    # target to normalise onto, so a smell attached to it must NOT be
+    # treated as persisting: the old-name smell is resolved, and an
+    # equivalent smell on either split product is new.
+    arch_a = _arch(auth=["a.A", "a.B", "a.C", "z.X", "z.Y", "z.Z"])
+    arch_b = _arch(auth=["a.A", "a.B", "a.C"], authz=["z.X", "z.Y", "z.Z"])
+    smell_a = SmellInstance(smell_type="BDC", severity="high", affected_components=["auth"])
+    smell_b = SmellInstance(smell_type="BDC", severity="high", affected_components=["authz"])
+    result = changelog_architecture(
+        arch_a, _empty_graph(), arch_b, _empty_graph(),
+        smells_a=[smell_a], smells_b=[smell_b], metrics_a=[], metrics_b=[],
+    )
+    assert [s["smell_type"] for s in result["smells"]["resolved"]] == ["BDC"]
+    assert result["smells"]["resolved"][0]["affected_components"] == ["auth"]
+    assert [s["smell_type"] for s in result["smells"]["new"]] == ["BDC"]
+    assert result["smells"]["new"][0]["affected_components"] == ["authz"]
+    assert result["smells"]["persisting"] == []
+
+
+def test_new_and_resolved_smells_are_reported():
+    arch = _arch(auth=["a.1", "a.2", "a.3"])
+    gone = SmellInstance(smell_type="BCO", severity="low", affected_components=["auth"])
+    fresh = SmellInstance(smell_type="BDC", severity="high", affected_components=["auth"])
+    result = changelog_architecture(
+        arch, _empty_graph(), arch, _empty_graph(),
+        smells_a=[gone], smells_b=[fresh], metrics_a=[], metrics_b=[],
+    )
+    assert [s["smell_type"] for s in result["smells"]["new"]] == ["BDC"]
+    assert [s["smell_type"] for s in result["smells"]["resolved"]] == ["BCO"]
+
+
+def test_smell_dict_coerces_enum_smell_type_to_a_plain_string():
+    # SmellInstance.smell_type is annotated str but production callers
+    # (detect_smells) actually populate it with SmellType enum members.
+    # str(SmellType.DEPENDENCY_CYCLE) leaks as "SmellType.DEPENDENCY_CYCLE"
+    # (Enum.__str__ wins over the str mixin), so _smell_dict must coerce via
+    # .value the same way the shared arcade_agent.display.display_value
+    # already does for the legacy report section. This dict is
+    # JSON-serialised on the MCP path, so the leak must be fixed at the
+    # source, not papered over by a renderer.
+    smell = SmellInstance(
+        smell_type=SmellType.DEPENDENCY_CYCLE,
+        severity="high",
+        affected_components=["auth"],
+    )
+    result = _smell_dict(smell)
+    assert result["smell_type"] == "Dependency Cycle"
+    assert isinstance(result["smell_type"], str)
+    assert "SmellType" not in result["smell_type"]
+
+
+def test_new_smell_with_enum_smell_type_does_not_leak_in_changelog_output():
+    arch_a = _arch(auth=["a.1", "a.2", "a.3"])
+    arch_b = _arch(auth=["a.1", "a.2", "a.3"])
+    fresh = SmellInstance(
+        smell_type=SmellType.DEPENDENCY_CYCLE, severity="high", affected_components=["auth"]
+    )
+    result = changelog_architecture(
+        arch_a, _empty_graph(), arch_b, _empty_graph(),
+        smells_a=[], smells_b=[fresh], metrics_a=[], metrics_b=[],
+    )
+    assert result["smells"]["new"][0]["smell_type"] == "Dependency Cycle"
+
+
+def test_metric_deltas():
+    arch = _arch(auth=["a.1", "a.2", "a.3"])
+    result = changelog_architecture(
+        arch, _empty_graph(), arch, _empty_graph(),
+        smells_a=[], smells_b=[],
+        metrics_a=[MetricResult(name="RCI", value=0.30)],
+        metrics_b=[MetricResult(name="RCI", value=0.44)],
+    )
+    assert result["metrics"]["RCI"]["a"] == 0.30
+    assert result["metrics"]["RCI"]["b"] == 0.44
+    assert round(result["metrics"]["RCI"]["delta"], 4) == 0.14
+
+
+def test_metric_present_on_only_one_side_has_null_delta():
+    arch = _arch(auth=["a.1", "a.2", "a.3"])
+    result = changelog_architecture(
+        arch, _empty_graph(), arch, _empty_graph(),
+        smells_a=[], smells_b=[],
+        metrics_a=[], metrics_b=[MetricResult(name="TurboMQ", value=1.5)],
+    )
+    assert result["metrics"]["TurboMQ"]["a"] is None
+    assert result["metrics"]["TurboMQ"]["delta"] is None
+
+
+def test_refs_are_recorded_as_metadata():
+    arch = _arch(auth=["a.1", "a.2", "a.3"])
+    result = changelog_architecture(
+        arch, _empty_graph(), arch, _empty_graph(),
+        smells_a=[], smells_b=[], metrics_a=[], metrics_b=[],
+        ref_a="v0.1.1", ref_b="v0.2.0",
+    )
+    assert result["refs"] == {"a": "v0.1.1", "b": "v0.2.0"}
+
+
+def test_empty_architectures_do_not_raise():
+    result = changelog_architecture(
+        Architecture(), _empty_graph(), Architecture(), _empty_graph(),
+        smells_a=[], smells_b=[], metrics_a=[], metrics_b=[],
+    )
+    assert result["summary"]["components_a"] == 0
+    assert result["summary"]["components_b"] == 0

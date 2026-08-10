@@ -426,6 +426,107 @@ def test_build_report_payload_uses_metric_semantics_for_lower_is_better_metrics(
     assert metric_rows["InterConnectivity"]["delta_class"] == "delta-positive"
 
 
+def _multi_entity_snapshot(commit_sha: str, components: list[dict]) -> dict:
+    """Snapshot with explicit multi-entity components, for A2A/provenance tests.
+
+    Unlike `_snapshot`, which gives every component a single synthetic
+    entity (too small to exercise split/merge significance thresholds),
+    this builds components from explicit entity FQN lists.
+    """
+    total_entities = sum(len(c["entities"]) for c in components)
+    return {
+        "repo_name": "sample-repo",
+        "commit_sha": commit_sha,
+        "algorithm": "pkg",
+        "num_components": len(components),
+        "num_entities": total_entities,
+        "num_edges": 0,
+        "source_num_entities": total_entities,
+        "class_count": total_entities,
+        "function_count": 0,
+        "method_count": 0,
+        "component_dependencies": [],
+        "components": [
+            {
+                "name": c["name"],
+                "responsibility": c["name"],
+                "num_entities": len(c["entities"]),
+                "class_count": len(c["entities"]),
+                "function_count": 0,
+                "method_count": 0,
+                "entity_kind_counts": {"class": len(c["entities"])},
+                "entities": c["entities"],
+            }
+            for c in components
+        ],
+        "metrics": {"RCI": 0.7, "TurboMQ": 0.4},
+        "smells": [],
+    }
+
+
+def test_build_comment_new_components_agrees_with_components_added_count_for_a_split():
+    """Pins the fix for the compare_baseline-level instance of the review's
+    "Components Added: 0" vs. "New components: authz" contradiction.
+
+    A genuine split must not be reported as an "added" component in either
+    the summary count or the "New components" detail list -- both must now
+    read from the provenance-derived `structural` classification, not from
+    which side a raw Hungarian match happened to leave empty.
+    """
+    baseline = _multi_entity_snapshot("abc1234", [
+        {"name": "auth", "entities": [
+            "pkg.auth.A", "pkg.auth.B", "pkg.auth.C",
+            "pkg.authz.X", "pkg.authz.Y", "pkg.authz.Z",
+        ]},
+    ])
+    current = _multi_entity_snapshot("def5678", [
+        {"name": "auth", "entities": ["pkg.auth.A", "pkg.auth.B", "pkg.auth.C"]},
+        {"name": "authz", "entities": ["pkg.authz.X", "pkg.authz.Y", "pkg.authz.Z"]},
+    ])
+
+    comment = build_comment(current, baseline)
+
+    assert "| Components Added | 0 |" in comment
+    assert "New components:" not in comment
+    assert "| Splits | 1 |" in comment
+
+
+def test_build_comment_does_not_report_a_rewritten_component_as_added_and_removed():
+    """Same contradiction class as the split test above, second scenario.
+
+    A component whose name survives while all of its entities churn was
+    reported as `Components Added: 1` *and* `Components Removed: 1` -- with
+    `Matched Components: 2` and a `component_rows` entry rendering the very
+    same component as `matched` in the same comment. It is one rewritten
+    component, and the counts must say so.
+    """
+    baseline = _multi_entity_snapshot("abc1234", [
+        {"name": "auth", "entities": [f"pkg.legacy.mod{i:02d}.C" for i in range(12)]},
+        {"name": "core", "entities": [f"pkg.core.mod{i:02d}.C" for i in range(12)]},
+    ])
+    current = _multi_entity_snapshot("def5678", [
+        {"name": "auth", "entities": [f"pkg.service.mod{i:02d}.C" for i in range(12)]},
+        {"name": "core", "entities": [f"pkg.core.mod{i:02d}.C" for i in range(12)]},
+    ])
+
+    comment = build_comment(current, baseline)
+    payload = build_report_payload(current, baseline)
+
+    assert "| Components Added | 0 |" in comment
+    assert "| Components Removed | 0 |" in comment
+    assert "| Components Rewritten | 1 |" in comment
+    assert "New components:" not in comment
+    assert "Removed components:" not in comment
+
+    structural = payload["a2a_result"]["structural"]
+    assert structural["rewritten"] == [
+        {"name": "auth", "before": 12, "after": 12, "retained": 0}
+    ]
+
+    statuses = {row["current_name"]: row["status"] for row in payload["component_rows"]}
+    assert statuses == {"auth": "matched", "core": "matched"}
+
+
 def test_build_comment_shows_score_drivers_when_available():
     current = _snapshot("def5678", "Core", 1, 1)
     current["derived_metrics"] = {

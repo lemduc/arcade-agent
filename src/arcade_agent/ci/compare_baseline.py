@@ -526,6 +526,10 @@ def _build_component_rows(
             })
         return rows
 
+    structural = (a2a_result or {}).get("structural") or {}
+    added_names = set(structural.get("added", []))
+    removed_names = set(structural.get("removed", []))
+
     matched_names: set[str] = set()
     if a2a_result:
         for match in a2a_result.get("matches", []):
@@ -555,6 +559,16 @@ def _build_component_rows(
                 matched_names.add(source_name)
                 matched_names.add(target_name)
             elif target_name:
+                # A Hungarian-unmatched target is only a genuine addition when
+                # the provenance-derived `structural` classification agrees --
+                # otherwise it is a split product or merge target, already
+                # accounted for elsewhere, and reporting it here too would
+                # contradict the structural add/remove counts (same class of
+                # bug as the "Components Added: 0" vs. "New components: X"
+                # inconsistency this replaces).
+                matched_names.add(target_name)
+                if target_name not in added_names:
+                    continue
                 target = current_map[target_name]
                 rows.append({
                     "status": "added",
@@ -565,8 +579,10 @@ def _build_component_rows(
                     "classes": f"0 → {_component_count(target, 'class_count')}",
                     "methods": f"0 → {_component_count(target, 'method_count')}",
                 })
-                matched_names.add(target_name)
             elif source_name:
+                matched_names.add(source_name)
+                if source_name not in removed_names:
+                    continue
                 source = baseline_map[source_name]
                 rows.append({
                     "status": "removed",
@@ -577,7 +593,6 @@ def _build_component_rows(
                     "classes": _component_metric_transition(source, None, "class_count"),
                     "methods": _component_metric_transition(source, None, "method_count"),
                 })
-                matched_names.add(source_name)
 
     for name, component in sorted(current_map.items()):
         if name not in matched_names:
@@ -1047,19 +1062,37 @@ def build_comment(
             lines.append(f"| Matched Components | {summary['total_matches']} |")
             lines.append(f"| Components Added | {summary['components_added']} |")
             lines.append(f"| Components Removed | {summary['components_removed']} |")
-            if summary.get("possible_splits"):
-                lines.append(f"| Possible Splits | {summary['possible_splits']} |")
-            if summary.get("possible_merges"):
-                lines.append(f"| Possible Merges | {summary['possible_merges']} |")
+            if summary.get("components_rewritten"):
+                lines.append(
+                    f"| Components Rewritten | {summary['components_rewritten']} |"
+                )
+            if summary.get("splits"):
+                lines.append(f"| Splits | {summary['splits']} |")
+            if summary.get("merges"):
+                lines.append(f"| Merges | {summary['merges']} |")
             lines.append("")
 
-            # Component-level matches detail
+            # Component-level matches detail. "Matched" stays the raw Hungarian
+            # 1:1 view (similarity scoring). "New"/"Removed" use the
+            # provenance-derived `structural` classification -- not whichever
+            # side a Hungarian match left empty -- so this list always agrees
+            # with the "Components Added"/"Components Removed" counts above.
+            # A component with no source or target in `matches` but that is
+            # instead a split product or merge target does not appear in
+            # either list; it is reported via "Splits"/"Merges" above.
             matches = a2a_result.get("matches", [])
             matched = [m for m in matches if m.get("source") and m.get("target")]
-            added = [m for m in matches if not m.get("source")]
-            removed = [m for m in matches if not m.get("target")]
+            structural = a2a_result.get("structural") or {}
+            added_names = sorted(structural.get("added", []))
+            removed_names = sorted(structural.get("removed", []))
+            # A component that kept its name while its entities churned
+            # entirely belongs to neither list: it used to appear in both,
+            # contradicting the "matched" row for the very same component.
+            rewritten_entries = sorted(
+                structural.get("rewritten", []), key=lambda entry: entry["name"]
+            )
 
-            if matched or added or removed:
+            if matched or added_names or removed_names or rewritten_entries:
                 lines.append("<details><summary>Component matching details</summary>\n")
                 if matched:
                     lines.append("**Matched:**")
@@ -1070,15 +1103,24 @@ def build_comment(
                             f"| {m['source']} | {m['target']} | {m['similarity']:.4f} |"
                         )
                     lines.append("")
-                if added:
+                if added_names:
                     lines.append("**New components:** " + ", ".join(
-                        f"`{m['target']}`" for m in added
+                        f"`{name}`" for name in added_names
                     ))
                     lines.append("")
-                if removed:
+                if removed_names:
                     lines.append("**Removed components:** " + ", ".join(
-                        f"`{m['source']}`" for m in removed
+                        f"`{name}`" for name in removed_names
                     ))
+                    lines.append("")
+                if rewritten_entries:
+                    lines.append("**Rewritten components** (name kept, entities "
+                                 "replaced): " + ", ".join(
+                                     f"`{entry['name']}` ({entry['before']} → "
+                                     f"{entry['after']} entities, "
+                                     f"{entry['retained']} in common)"
+                                     for entry in rewritten_entries
+                                 ))
                     lines.append("")
                 lines.append("</details>\n")
 
@@ -1294,10 +1336,10 @@ def main() -> None:
                 f"{summary['arch_b_components']} "
                 f"(+{summary['components_added']} / -{summary['components_removed']})"
             )
-            if summary.get("possible_splits"):
-                print(f"  Possible Splits: {summary['possible_splits']}")
-            if summary.get("possible_merges"):
-                print(f"  Possible Merges: {summary['possible_merges']}")
+            if summary.get("splits"):
+                print(f"  Splits: {summary['splits']}")
+            if summary.get("merges"):
+                print(f"  Merges: {summary['merges']}")
         else:
             print(
                 f"  Components:  {baseline.get('num_components')} → "

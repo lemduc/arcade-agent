@@ -11,7 +11,6 @@ Usage:
 
 import argparse
 import sys
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -23,8 +22,11 @@ from arcade_agent.ci.graph_filter import (
     SELF_DOGFOOD_PROFILE,
     _filter_non_architectural_entities,
 )
+from arcade_agent.display import display_value
+from arcade_agent.exporters.changelog_md import render_changelog_markdown
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.serialization import load_architecture, save_architecture
+from arcade_agent.tools.changelog_architecture import changelog_architecture
 from arcade_agent.tools.compare import compare
 from arcade_agent.tools.compute_metrics import compute_metrics
 from arcade_agent.tools.detect_smells import detect_smells
@@ -52,9 +54,6 @@ _LOWER_IS_BETTER = {
     "InterConnectivity",
     "TwoWayPairRatio",
 }
-
-# Maximum entity movements to list individually.
-_MAX_ENTITY_MOVEMENTS = 15
 
 # Smell → actionable recommendation mapping.
 _SMELL_RECOMMENDATIONS = {
@@ -155,67 +154,49 @@ def build_report(
 
         lines.append("")
 
-        # ── Changes summary ──────────────────────────────────────────────
-        lines.append("### Changes")
-        lines.append("")
-        if summary["components_added"]:
-            added_names = [
-                m["target"] for m in drift["matches"] if not m["source"]
-            ]
-            lines.append(
-                f"- {summary['components_added']} component(s) added: "
-                f"`{'`, `'.join(added_names)}`"
+        # Architectural changelog: structure + responsibility shifts.
+        #
+        # Supersedes the older hand-rolled "### Changes" block, which derived
+        # added/removed names from the Hungarian `matches` list and read the
+        # `possible_splits`/`possible_merges` summary keys. Those keys no
+        # longer exist, and `matches` cannot represent a split or a merge at
+        # all — see CHANGELOG.md. The changelog reports the same three facts
+        # (components added/removed, entity movements, splits/merges) from
+        # entity provenance instead, and names the *source* component of each
+        # movement, not just its destination.
+        #
+        # Smells and metrics are excluded here because the "### Smells" and
+        # "### Drift from Baseline" sections below already own them. Rendering
+        # either twice would state the same fact in two formats.
+        #
+        # `graph_a` is deliberately the *current* graph: this CLI stores only a
+        # baseline Architecture, never the graph it came from. That is safe
+        # only because `smells_a=[]`/`metrics_a=[]` are supplied, so the
+        # changelog never runs detect_smells/compute_metrics over the pair --
+        # which would score the baseline's FQNs against the current graph. It
+        # also means the changelog's language-drift warning can never fire
+        # here (both language sets come from one graph); the warning still
+        # works for MCP/library callers that pass two real graphs, so it stays.
+        changelog = changelog_architecture(
+            baseline,
+            graph,
+            current,
+            graph,
+            smells_a=[],
+            smells_b=smells,
+            metrics_a=[],
+            metrics_b=metrics,
+            ref_a="baseline",
+            ref_b="current",
+        )
+        lines.append(
+            render_changelog_markdown(
+                changelog,
+                include_smells=False,
+                include_metrics=False,
+                heading_level=3,
             )
-        if summary["components_removed"]:
-            removed_names = [
-                m["source"] for m in drift["matches"] if not m["target"]
-            ]
-            lines.append(
-                f"- {summary['components_removed']} component(s) removed: "
-                f"`{'`, `'.join(removed_names)}`"
-            )
-
-        # Entity movements with details
-        movements: list[tuple[str, str, str]] = []
-        for m in drift["matches"]:
-            if not (m["source"] and m["target"]):
-                continue
-            for ent in m.get("entities_added", []):
-                movements.append((ent, "→", m["target"]))
-            for ent in m.get("entities_removed", []):
-                movements.append((ent, "←", m["source"]))
-
-        if movements:
-            lines.append(
-                f"- {len(movements)} entity movement(s) between components"
-            )
-            shown = movements[:_MAX_ENTITY_MOVEMENTS]
-            for ent, arrow, component_name in shown:
-                lines.append(f"  - `{ent}` {arrow} **{component_name}**")
-            if len(movements) > _MAX_ENTITY_MOVEMENTS:
-                lines.append(
-                    f"  - … and {len(movements) - _MAX_ENTITY_MOVEMENTS} more"
-                )
-
-        if summary["possible_merges"]:
-            lines.append(
-                f"- {summary['possible_merges']} possible merge(s) detected"
-            )
-        if summary["possible_splits"]:
-            lines.append(
-                f"- {summary['possible_splits']} possible split(s) detected"
-            )
-
-        if not any([
-            summary["components_added"],
-            summary["components_removed"],
-            movements,
-            summary["possible_merges"],
-            summary["possible_splits"],
-        ]):
-            lines.append("- No structural changes detected")
-
-        lines.append("")
+        )
 
     # ── Component breakdown ──────────────────────────────────────────────
     lines.append("### Components")
@@ -265,8 +246,9 @@ def build_report(
                 if smell.affected_components
                 else ""
             )
-            smell_key = _display_value(smell.smell_type).lower().replace(" ", "_")
-            lines.append(f"- **{_display_value(smell.smell_type)}**: {affected}")
+            smell_name = display_value(smell.smell_type)
+            smell_key = smell_name.lower().replace(" ", "_")
+            lines.append(f"- **{smell_name}**: {affected}")
             rec = _SMELL_RECOMMENDATIONS.get(smell_key)
             if rec:
                 lines.append(f"  - 💡 {rec}")
@@ -323,11 +305,6 @@ def _delta(val: int | float) -> str:
     if isinstance(val, float):
         return f"+{val:.2f}" if val >= 0 else f"{val:.2f}"
     return f"+{val}" if val >= 0 else str(val)
-
-
-def _display_value(value: object) -> str:
-    """Display enum-like values without their enum class prefix."""
-    return str(value.value if isinstance(value, Enum) else value)
 
 
 def main(argv: list[str] | None = None) -> None:
