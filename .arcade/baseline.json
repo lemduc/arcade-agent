@@ -108,13 +108,13 @@
         "arcade_agent.exporters.html.export_comparison_html",
         "arcade_agent.exporters.html.export_evolution_html",
         "arcade_agent.exporters.html.export_html",
-        "arcade_agent.exporters.html.mermaid_label_text",
-        "arcade_agent.exporters.html.mermaid_node_id",
         "arcade_agent.exporters.json.build_component_summary",
         "arcade_agent.exporters.json.build_graph_summary",
         "arcade_agent.exporters.json.export_json",
         "arcade_agent.exporters.json.summarize_entity_kinds",
         "arcade_agent.exporters.mermaid.build_mermaid_diagram",
+        "arcade_agent.exporters.mermaid.mermaid_label_text",
+        "arcade_agent.exporters.mermaid.mermaid_node_id",
         "arcade_agent.exporters.rsf.export_rsf"
       ]
     },
@@ -216,19 +216,19 @@
     }
   ],
   "metrics": {
-    "RCI": 0.5603,
-    "TurboMQ": 2.6327,
-    "BasicMQ": 0.2393,
-    "IntraConnectivity": 0.0154,
-    "InterConnectivity": 0.0512,
+    "RCI": 0.5586,
+    "TurboMQ": 2.6782,
+    "BasicMQ": 0.2435,
+    "IntraConnectivity": 0.016,
+    "InterConnectivity": 0.053,
     "TwoWayPairRatio": 0.0,
-    "DependencyHealth": 0.9718,
+    "DependencyHealth": 0.9708,
     "ComponentBalance": 0.4723,
     "HubBalance": 0.5,
     "BoundaryClarity": 0.9545,
     "DependencyDistribution": 0.6294,
     "SmellDiscipline": 0.9455,
-    "PrincipleAlignmentScore": 0.8513,
-    "BalancedArchitectureScore": 0.6156
+    "PrincipleAlignmentScore": 0.8511,
+    "BalancedArchitectureScore": 0.6166
   }
 }
