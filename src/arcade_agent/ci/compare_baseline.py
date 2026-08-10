@@ -377,6 +377,7 @@ def _normalize_snapshot(data: dict | None) -> dict | None:
         total_counts[component["name"]] = total_counts.get(component["name"], 0) + 1
 
     seen_counts: dict[str, int] = {}
+    used_names: set[str] = set()
     rename_map: dict[str, list[str]] = {}
     for component in components:
         base_name = component["name"]
@@ -388,11 +389,16 @@ def _normalize_snapshot(data: dict | None) -> dict | None:
             if needs_derived_name
             else base_name
         )
-        seen_counts[derived_name] = seen_counts.get(derived_name, 0) + 1
-        if seen_counts[derived_name] == 1:
-            comparison_name = derived_name
-        else:
-            comparison_name = f"{derived_name}{seen_counts[derived_name]}"
+        # A derived name may itself end in a digit (``Api2``), which would clash
+        # with the suffix minted for the second member of the ``Api`` bucket.
+        # Keep bumping the suffix until the label is globally unique.
+        suffix = seen_counts.get(derived_name, 0) + 1
+        comparison_name = derived_name if suffix == 1 else f"{derived_name}{suffix}"
+        while comparison_name in used_names:
+            suffix += 1
+            comparison_name = f"{derived_name}{suffix}"
+        seen_counts[derived_name] = suffix
+        used_names.add(comparison_name)
         component["comparison_name"] = comparison_name
         rename_map.setdefault(base_name, []).append(comparison_name)
 

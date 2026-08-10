@@ -1,5 +1,6 @@
 """HTML report generation using Jinja2 and Mermaid.js."""
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -602,27 +603,65 @@ def export_comparison_html(
     return output_path
 
 
+MERMAID_ID_MAX_LEN = 48
+MERMAID_LABEL_NAME_MAX_LEN = 48
+_MERMAID_DIGEST_LEN = 6
+
+
+def _name_digest(name: str) -> str:
+    """Return a short stable digest so truncated/empty names stay distinguishable."""
+    return hashlib.sha1(name.encode("utf-8")).hexdigest()[:_MERMAID_DIGEST_LEN]
+
+
+def _cap_with_digest(value: str, name: str, max_len: int) -> str:
+    """Truncate ``value`` to ``max_len``, appending a digest of the full ``name``.
+
+    Plain truncation would merge two components that share a long prefix, so the
+    digest keeps the result unique even after the visible part is cut.
+    """
+    if len(value) <= max_len:
+        return value
+    keep = max_len - _MERMAID_DIGEST_LEN - 1
+    return f"{value[:keep]}_{_name_digest(name)}"
+
+
+def mermaid_node_id(name: str) -> str:
+    """Build a safe, unique-per-name Mermaid node identifier."""
+    nid = name.replace(" ", "_").replace("-", "_").replace(".", "_")
+    nid = "".join(char for char in nid if char.isalnum() or char == "_")
+    if not nid:
+        # Symbol-only names all sanitize to nothing; without the digest every
+        # such component would share a single node.
+        return f"unnamed_{_name_digest(name)}"
+    return _cap_with_digest(nid, name, MERMAID_ID_MAX_LEN)
+
+
+def mermaid_label_text(name: str) -> str:
+    """Escape a component name for use inside a quoted Mermaid node label."""
+    capped = _cap_with_digest(name, name, MERMAID_LABEL_NAME_MAX_LEN)
+    # `#` must be escaped first, otherwise it would corrupt the `#quot;` entity.
+    return capped.replace("#", "#35;").replace('"', "#quot;")
+
+
 def build_snapshot_mermaid(snapshot: dict | None) -> str:
     """Build a Mermaid diagram from stored component snapshots."""
     if not snapshot:
         return "graph TD\n    Empty[\"No baseline snapshot\"]"
 
-    def node_id(name: str) -> str:
-        nid = name.replace(" ", "_").replace("-", "_").replace(".", "_")
-        nid = "".join(char for char in nid if char.isalnum() or char == "_")
-        return nid or "unnamed"
+    node_id = mermaid_node_id
 
     lines = ["graph TD"]
     components = snapshot.get("components", [])
     dependencies = snapshot.get("component_dependencies", [])
 
     for component in components:
+        comparison_name = component.get("comparison_name", component["name"])
         label = (
-            f"{component['name']}\\n"
+            f"{mermaid_label_text(comparison_name)}\\n"
             f"{component.get('num_entities', len(component.get('entities', [])))} entities\\n"
             f"{component.get('class_count', 0)} classes / {component.get('method_count', 0)} methods"
         )
-        lines.append(f"    {node_id(component['name'])}[\"{label}\"]")
+        lines.append(f"    {node_id(comparison_name)}[\"{label}\"]")
 
     for dep in dependencies:
         lines.append(

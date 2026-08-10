@@ -92,6 +92,8 @@
         "arcade_agent.exporters.html.export_comparison_html",
         "arcade_agent.exporters.html.export_evolution_html",
         "arcade_agent.exporters.html.export_html",
+        "arcade_agent.exporters.html.mermaid_label_text",
+        "arcade_agent.exporters.html.mermaid_node_id",
         "arcade_agent.exporters.json.build_component_summary",
         "arcade_agent.exporters.json.build_graph_summary",
         "arcade_agent.exporters.json.export_json",
@@ -195,16 +197,16 @@
     "RCI": 0.5669,
     "TurboMQ": 2.6172,
     "BasicMQ": 0.2617,
-    "IntraConnectivity": 0.0202,
-    "InterConnectivity": 0.0392,
+    "IntraConnectivity": 0.0197,
+    "InterConnectivity": 0.0388,
     "TwoWayPairRatio": 0.0,
-    "DependencyHealth": 0.9784,
-    "ComponentBalance": 0.5368,
+    "DependencyHealth": 0.9787,
+    "ComponentBalance": 0.5394,
     "HubBalance": 0.5556,
     "BoundaryClarity": 0.9444,
     "DependencyDistribution": 0.675,
     "SmellDiscipline": 0.94,
-    "PrincipleAlignmentScore": 0.8659,
-    "BalancedArchitectureScore": 0.6283
+    "PrincipleAlignmentScore": 0.8662,
+    "BalancedArchitectureScore": 0.6284
   }
 }

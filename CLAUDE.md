@@ -7,19 +7,19 @@ arcade-agent is a framework-agnostic tool library for software architecture anal
 ## Quick Reference
 
 ```bash
-# Setup
-cd arcade-agent
+# Setup (Python 3.12+; run from the repo root)
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,languages,mcp]"   # CI installs these extras; without
+                                        # [languages] the parser tests skip
 
 # Run tests
 pytest
 
-# Lint
+# Lint (CI-gated)
 ruff check src/ tests/
 
-# Type check
+# Type check (NOT CI-gated; many pre-existing strict errors)
 mypy src/
 
 # Example usage
