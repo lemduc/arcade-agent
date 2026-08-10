@@ -150,6 +150,11 @@
         "arcade_agent.parsers.python.PythonParser",
         "arcade_agent.parsers.python.extract_file",
         "arcade_agent.parsers.python.link",
+        "arcade_agent.parsers.rust.RustParser",
+        "arcade_agent.parsers.rust._Import",
+        "arcade_agent.parsers.rust._PendingImpl",
+        "arcade_agent.parsers.rust._PendingMethod",
+        "arcade_agent.parsers.rust._References",
         "arcade_agent.parsers.typescript.TypeScriptParser"
       ]
     },
@@ -211,19 +216,19 @@
     }
   ],
   "metrics": {
-    "RCI": 0.5441,
-    "TurboMQ": 2.6232,
-    "BasicMQ": 0.2385,
-    "IntraConnectivity": 0.0175,
-    "InterConnectivity": 0.0519,
+    "RCI": 0.5603,
+    "TurboMQ": 2.6327,
+    "BasicMQ": 0.2393,
+    "IntraConnectivity": 0.0154,
+    "InterConnectivity": 0.0512,
     "TwoWayPairRatio": 0.0,
-    "DependencyHealth": 0.9715,
-    "ComponentBalance": 0.4769,
+    "DependencyHealth": 0.9718,
+    "ComponentBalance": 0.4723,
     "HubBalance": 0.5,
     "BoundaryClarity": 0.9545,
     "DependencyDistribution": 0.6294,
     "SmellDiscipline": 0.9455,
-    "PrincipleAlignmentScore": 0.8517,
-    "BalancedArchitectureScore": 0.6126
+    "PrincipleAlignmentScore": 0.8513,
+    "BalancedArchitectureScore": 0.6156
   }
 }
