@@ -3,7 +3,11 @@
 import importlib.util
 from pathlib import Path
 
-from arcade_agent.exporters.html import export_evolution_html, export_html
+from arcade_agent.exporters.html import (
+    build_snapshot_mermaid,
+    export_evolution_html,
+    export_html,
+)
 from arcade_agent.models.architecture import Architecture, Component
 from arcade_agent.models.graph import DependencyGraph, Entity
 from arcade_agent.models.metrics import MetricResult
@@ -135,6 +139,27 @@ def test_build_report_payload_derives_names_for_generic_components():
 
     assert report["current"]["components"][0]["comparison_name"] == "AlgorithmsCoupling"
     assert report["dependency_rows"][0]["status"] == "matched"
+
+
+def test_snapshot_mermaid_uses_comparison_names_for_nodes_and_dependencies():
+    baseline = _snapshot("abc1234", "Repository3", 1, 1)
+    baseline["components"][0]["entities"] = [
+        "sample_repo.algorithms.coupling.compute_rci",
+        "sample_repo.algorithms.coupling.compute_turbo_mq",
+    ]
+    baseline["component_dependencies"] = [
+        {"source": "Repository3", "target": "Repository3"}
+    ]
+    current = _snapshot("def5678", "Repository3", 1, 1)
+    current["components"][0]["entities"] = list(baseline["components"][0]["entities"])
+    current["component_dependencies"] = list(baseline["component_dependencies"])
+
+    report = build_report_payload(current, baseline)
+    mermaid = build_snapshot_mermaid(report["current"])
+
+    assert 'AlgorithmsCoupling["AlgorithmsCoupling\\n' in mermaid
+    assert "AlgorithmsCoupling --> AlgorithmsCoupling" in mermaid
+    assert 'Repository3["' not in mermaid
 
 
 def test_build_report_payload_uses_repo_name_from_snapshot():
