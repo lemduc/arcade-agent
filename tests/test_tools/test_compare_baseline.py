@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 
+from arcade_agent.ci.compare_baseline import _component_map, _normalize_snapshot
 from arcade_agent.exporters.html import (
     build_snapshot_mermaid,
     export_evolution_html,
@@ -160,6 +161,147 @@ def test_snapshot_mermaid_uses_comparison_names_for_nodes_and_dependencies():
     assert 'AlgorithmsCoupling["AlgorithmsCoupling\\n' in mermaid
     assert "AlgorithmsCoupling --> AlgorithmsCoupling" in mermaid
     assert 'Repository3["' not in mermaid
+
+
+def _multi_component_snapshot(commit_sha: str, packages: list[str]) -> dict:
+    """Snapshot whose generic component names all get derived from entity FQNs."""
+    components = [
+        {
+            "name": f"Cluster{index}",
+            "responsibility": f"Cluster{index}",
+            "num_entities": 2,
+            "class_count": 1,
+            "function_count": 0,
+            "method_count": 1,
+            "entity_kind_counts": {"class": 1, "method": 1},
+            "entities": [f"app.{package}.fn0", f"app.{package}.fn1"],
+        }
+        for index, package in enumerate(packages)
+    ]
+    return {
+        "repo_name": "sample-repo",
+        "commit_sha": commit_sha,
+        "algorithm": "pkg",
+        "num_components": len(components),
+        "num_entities": 2 * len(components),
+        "num_edges": 0,
+        "source_num_entities": 2 * len(components),
+        "class_count": len(components),
+        "function_count": 0,
+        "method_count": len(components),
+        "component_dependencies": [],
+        "components": components,
+        "metrics": {"RCI": 0.7, "TurboMQ": 0.4},
+        "smells": [],
+    }
+
+
+def test_comparison_names_stay_unique_when_derived_name_looks_suffixed():
+    """A derived name of ``Api2`` must not collide with the suffixed ``Api`` bucket."""
+    current = _multi_component_snapshot("def5678", ["api", "api", "api2"])
+
+    report = build_report_payload(current, None)
+    names = [component["comparison_name"] for component in report["current"]["components"]]
+
+    assert names == ["Api", "Api2", "Api22"]
+    assert len(names) == len(set(names))
+
+
+def test_component_map_keeps_every_component_when_names_would_collide():
+    """Colliding comparison names used to silently drop a component from the map."""
+    current = _multi_component_snapshot("def5678", ["api", "api", "api2"])
+
+    normalized = _normalize_snapshot(current)
+    component_map = _component_map(normalized)
+
+    assert len(normalized["components"]) == 3
+    assert len(component_map) == 3
+    assert sorted(component_map) == ["Api", "Api2", "Api22"]
+
+
+def test_comment_component_table_has_no_duplicate_rows():
+    """The markdown breakdown used to emit the same component name twice."""
+    current = _multi_component_snapshot("def5678", ["api", "api", "api2"])
+
+    comment = build_comment(current, None)
+    comment_rows = [line for line in comment.splitlines() if line.startswith("| Api")]
+
+    assert len(comment_rows) == 3
+    assert len(comment_rows) == len(set(comment_rows))
+
+
+def test_snapshot_mermaid_escapes_quotes_in_component_labels():
+    snapshot = {
+        "components": [
+            {
+                "name": 'Auth "core" (v2)',
+                "comparison_name": 'Auth "core" (v2)',
+                "num_entities": 1,
+                "class_count": 1,
+                "method_count": 1,
+            }
+        ],
+        "component_dependencies": [],
+    }
+
+    mermaid = build_snapshot_mermaid(snapshot)
+    node_line = mermaid.splitlines()[1]
+
+    # A raw `"` inside the label terminates the node early and breaks the block.
+    assert node_line.count('"') == 2
+    assert "#quot;" in node_line
+
+
+def test_snapshot_mermaid_gives_symbol_only_names_distinct_node_ids():
+    snapshot = {
+        "components": [
+            {
+                "name": name,
+                "comparison_name": name,
+                "num_entities": 1,
+                "class_count": 1,
+                "method_count": 1,
+            }
+            for name in ("###", "!!!")
+        ],
+        "component_dependencies": [{"source": "###", "target": "!!!"}],
+    }
+
+    mermaid = build_snapshot_mermaid(snapshot)
+    node_ids = [line.split("[")[0].strip() for line in mermaid.splitlines()[1:3]]
+
+    assert len(set(node_ids)) == 2
+    assert mermaid.splitlines()[3].strip() == f"{node_ids[0]} --> {node_ids[1]}"
+
+
+def test_snapshot_mermaid_caps_node_id_and_label_length():
+    long_name = "A" * 120
+    other_long_name = "A" * 118 + "B" * 2
+    snapshot = {
+        "components": [
+            {
+                "name": name,
+                "comparison_name": name,
+                "num_entities": 1,
+                "class_count": 1,
+                "method_count": 1,
+            }
+            for name in (long_name, other_long_name)
+        ],
+        "component_dependencies": [{"source": long_name, "target": other_long_name}],
+    }
+
+    mermaid = build_snapshot_mermaid(snapshot)
+    node_lines = mermaid.splitlines()[1:3]
+    node_ids = [line.split("[")[0].strip() for line in node_lines]
+
+    assert all(len(node_id) <= 48 for node_id in node_ids)
+    # Truncation must not merge two distinct components sharing a long prefix.
+    assert len(set(node_ids)) == 2
+    for line in node_lines:
+        label = line.split('["', 1)[1].split("\\n", 1)[0]
+        assert len(label) <= 48
+    assert mermaid.splitlines()[3].strip() == f"{node_ids[0]} --> {node_ids[1]}"
 
 
 def test_build_report_payload_uses_repo_name_from_snapshot():
