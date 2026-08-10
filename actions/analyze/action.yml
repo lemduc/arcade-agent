@@ -24,7 +24,7 @@ inputs:
     default: "."
   language:
     description: >
-      Optional language override (java, python, typescript, c, go, kotlin, or multi
+      Optional language override (java, python, typescript, c, go, kotlin, rust, or multi
       for every detected language with cross-language edge relinking).
     required: false
     default: ""

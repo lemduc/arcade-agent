@@ -43,7 +43,9 @@ Handle real-world polyglot monorepos.
 - [x] **15. TypeScript/JS parser** — Shipped in #8 (`parsers/typescript.py`).
 - [x] **16a. Go parser** — Shipped alongside TS/JS in #8 (`parsers/go.py`).
 - [x] **16a2. Kotlin parser** — Shipped (`parsers/kotlin.py`) for JVM/Kotlin-first repos (e.g. embabel-agent).
-- [ ] **16b. Rust parser** — Still open. High-demand language for agent-assisted development.
+- [x] **16b. Rust parser** — Shipped (`parsers/rust.py`): modules, types, traits, functions,
+  methods, imports, qualified references, trait relationships, Cargo workspaces, and inline
+  `#[cfg(test)]` exclusion.
 - [x] **17. Incremental parsing** — Content-hash extract cache shipped in #9 (`incremental.py`), wired for the Python parser only; extending to the other two-pass parsers is follow-up.
 - [x] **18. Cross-language dependency tracking** — MVP: multi-language ingest/parse (`languages=[...]` / `language="multi"`) merges per-language graphs and relinks import/extends/implements across FQN space. Relinking is **family-scoped**: the `jvm` family (Java↔Kotlin) is the supported and validated pair; every other language is its own family and is merged without cross-language edges. Extending relinking to further families (and broader RPC/IDL bridges — gRPC stubs, OpenAPI) remains follow-up.
 
@@ -60,6 +62,6 @@ Work everywhere agents work.
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1–10, 12, 13, 14, 15, 16a, 16a2, 17, 18 (MVP) | Phases 1–2 + TS/JS & Go & Kotlin parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface`, polyglot merge+relink, `changelog_architecture` |
-| **Now** | 11, 16b | Component ownership, Rust parser |
+| **Done** | 1–10, 12, 13, 14, 15, 16a, 16a2, 16b, 17, 18 (MVP) | Phases 1–2 + TS/JS & Go & Kotlin & Rust parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface`, polyglot merge+relink, `changelog_architecture` |
+| **Now** | 11 | Component ownership |
 | **Then** | 19–22 | Ecosystem breadth (OpenAI / LangChain / Claude SDK / IDE) |
