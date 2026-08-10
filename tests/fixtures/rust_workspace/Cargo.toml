@@ -1,0 +1,7 @@
+[workspace]
+members = ["crates/alpha", "crates/beta"]
+
+[package]
+name = "workspace-root"
+version = "0.1.0"
+edition = "2021"

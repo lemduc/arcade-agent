@@ -209,7 +209,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         Args:
             source: Git repo URL or local directory path.
             language: Override language detection (java, python, c, typescript,
-                go, kotlin, or "multi" for every detected language).
+                go, kotlin, rust, or "multi" for every detected language).
             languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).
                 Mutually exclusive with language.
             work_dir: Directory to clone into. Uses temp dir if None.
@@ -262,7 +262,7 @@ def _build_server():  # type: ignore[no-untyped-def]
                 ingest. An ingest session carries its selected files and languages
                 into this parse call unless explicitly overridden. Its files are
                 not re-filtered by parse-level exclusion options.
-            language: Language to parse (java, python, c, typescript, go, kotlin),
+            language: Language to parse (java, python, c, typescript, go, kotlin, rust),
                 or "multi" to parse every detected language and relink
                 cross-language edges.
             languages: Explicit polyglot language list (e.g. ["java", "kotlin"]).

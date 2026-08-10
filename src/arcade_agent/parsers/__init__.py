@@ -26,6 +26,11 @@ try:
 except ImportError:
     pass
 
+try:
+    import arcade_agent.parsers.rust  # noqa: F401
+except ImportError:
+    pass
+
 from arcade_agent.parsers.base import LanguageParser, get_parser
 
 __all__ = ["LanguageParser", "get_parser"]

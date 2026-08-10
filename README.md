@@ -135,6 +135,16 @@ smell burden, or another architectural pressure.
 - TypeScript/JavaScript (full support)
 - Go (full support)
 - Kotlin (structural support via optional `[languages]` extra; import + inheritance graph)
+- Rust (structural support via optional `[languages]` extra; structs, enums, unions, traits,
+  type aliases, functions, methods, imports, qualified references, trait
+  inheritance/implementations, and Cargo workspaces)
+
+Rust unit tests live *inline* in production files, so path-based test exclusion
+cannot see them. With `exclude_tests=True` (the default) the Rust parser also
+drops `#[cfg(test)]` items — including `cfg(all(test, ...))` / `cfg(any(test, ...))`,
+inner `#![cfg(test)]` files and module bodies, the file behind an out-of-line
+`#[cfg(test)] mod helpers;`, and `#[cfg(test)] use ...` dev-dependency imports.
+Pass `exclude_tests=False` to `ingest`/`parse`/`analyze` to keep them.
 
 ## Example: ARCADE Core
 
@@ -381,7 +391,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
 | A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
-| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin (structural); polyglot merge+relink via `languages=[...]` / `language="multi"` (cross-language edges within the JVM family only) |
+| Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin, Rust (structural); polyglot merge+relink via `languages=[...]` / `language="multi"` (cross-language edges within the JVM family only) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
 | MCP server | Done | Expose tools to AI agents via Model Context Protocol with session store |

@@ -48,7 +48,7 @@ def main() -> None:
         "--language",
         default="",
         help=(
-            "Optional language override (java, python, typescript, c, go, kotlin, "
+            "Optional language override (java, python, typescript, c, go, kotlin, rust, "
             "or multi for every detected language)"
         ),
     )
