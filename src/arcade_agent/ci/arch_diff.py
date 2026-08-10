@@ -24,6 +24,7 @@ from arcade_agent.ci.graph_filter import (
 )
 from arcade_agent.display import display_value
 from arcade_agent.exporters.changelog_md import render_changelog_markdown
+from arcade_agent.exporters.mermaid import mermaid_label_text, mermaid_node_id
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.serialization import load_architecture, save_architecture
 from arcade_agent.tools.changelog_architecture import changelog_architecture
@@ -227,12 +228,12 @@ def build_report(
         if src_comp and tgt_comp and src_comp != tgt_comp:
             comp_edges.add((src_comp, tgt_comp))
     for component in current.components:
-        safe = component.name.replace(" ", "_")
-        lines.append(f"    {safe}[\"{component.name}\"]")
+        lines.append(
+            f"    {mermaid_node_id(component.name)}"
+            f"[\"{mermaid_label_text(component.name)}\"]"
+        )
     for src, tgt in sorted(comp_edges):
-        safe_src = src.replace(" ", "_")
-        safe_tgt = tgt.replace(" ", "_")
-        lines.append(f"    {safe_src} --> {safe_tgt}")
+        lines.append(f"    {mermaid_node_id(src)} --> {mermaid_node_id(tgt)}")
     lines.append("```")
     lines.append("")
 

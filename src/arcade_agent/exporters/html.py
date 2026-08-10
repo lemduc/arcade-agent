@@ -1,6 +1,5 @@
 """HTML report generation using Jinja2 and Mermaid.js."""
 
-import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,7 +8,11 @@ from jinja2 import Template
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.algorithms.metrics import MetricResult
 from arcade_agent.algorithms.smells import SmellInstance
-from arcade_agent.exporters.mermaid import build_mermaid_diagram
+from arcade_agent.exporters.mermaid import (
+    build_mermaid_diagram,
+    mermaid_label_text,
+    mermaid_node_id,
+)
 from arcade_agent.parsers.graph import DependencyGraph
 
 REPORT_TEMPLATE = Template("""\
@@ -601,46 +604,6 @@ def export_comparison_html(
 
     output_path.write_text(html)
     return output_path
-
-
-MERMAID_ID_MAX_LEN = 48
-MERMAID_LABEL_NAME_MAX_LEN = 48
-_MERMAID_DIGEST_LEN = 6
-
-
-def _name_digest(name: str) -> str:
-    """Return a short stable digest so truncated/empty names stay distinguishable."""
-    return hashlib.sha1(name.encode("utf-8")).hexdigest()[:_MERMAID_DIGEST_LEN]
-
-
-def _cap_with_digest(value: str, name: str, max_len: int) -> str:
-    """Truncate ``value`` to ``max_len``, appending a digest of the full ``name``.
-
-    Plain truncation would merge two components that share a long prefix, so the
-    digest keeps the result unique even after the visible part is cut.
-    """
-    if len(value) <= max_len:
-        return value
-    keep = max_len - _MERMAID_DIGEST_LEN - 1
-    return f"{value[:keep]}_{_name_digest(name)}"
-
-
-def mermaid_node_id(name: str) -> str:
-    """Build a safe, unique-per-name Mermaid node identifier."""
-    nid = name.replace(" ", "_").replace("-", "_").replace(".", "_")
-    nid = "".join(char for char in nid if char.isalnum() or char == "_")
-    if not nid:
-        # Symbol-only names all sanitize to nothing; without the digest every
-        # such component would share a single node.
-        return f"unnamed_{_name_digest(name)}"
-    return _cap_with_digest(nid, name, MERMAID_ID_MAX_LEN)
-
-
-def mermaid_label_text(name: str) -> str:
-    """Escape a component name for use inside a quoted Mermaid node label."""
-    capped = _cap_with_digest(name, name, MERMAID_LABEL_NAME_MAX_LEN)
-    # `#` must be escaped first, otherwise it would corrupt the `#quot;` entity.
-    return capped.replace("#", "#35;").replace('"', "#quot;")
 
 
 def build_snapshot_mermaid(snapshot: dict | None) -> str:
