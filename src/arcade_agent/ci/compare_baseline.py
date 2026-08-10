@@ -1056,6 +1056,10 @@ def build_comment(
             lines.append(f"| Matched Components | {summary['total_matches']} |")
             lines.append(f"| Components Added | {summary['components_added']} |")
             lines.append(f"| Components Removed | {summary['components_removed']} |")
+            if summary.get("components_rewritten"):
+                lines.append(
+                    f"| Components Rewritten | {summary['components_rewritten']} |"
+                )
             if summary.get("splits"):
                 lines.append(f"| Splits | {summary['splits']} |")
             if summary.get("merges"):
@@ -1075,8 +1079,14 @@ def build_comment(
             structural = a2a_result.get("structural") or {}
             added_names = sorted(structural.get("added", []))
             removed_names = sorted(structural.get("removed", []))
+            # A component that kept its name while its entities churned
+            # entirely belongs to neither list: it used to appear in both,
+            # contradicting the "matched" row for the very same component.
+            rewritten_entries = sorted(
+                structural.get("rewritten", []), key=lambda entry: entry["name"]
+            )
 
-            if matched or added_names or removed_names:
+            if matched or added_names or removed_names or rewritten_entries:
                 lines.append("<details><summary>Component matching details</summary>\n")
                 if matched:
                     lines.append("**Matched:**")
@@ -1096,6 +1106,15 @@ def build_comment(
                     lines.append("**Removed components:** " + ", ".join(
                         f"`{name}`" for name in removed_names
                     ))
+                    lines.append("")
+                if rewritten_entries:
+                    lines.append("**Rewritten components** (name kept, entities "
+                                 "replaced): " + ", ".join(
+                                     f"`{entry['name']}` ({entry['before']} → "
+                                     f"{entry['after']} entities, "
+                                     f"{entry['retained']} in common)"
+                                     for entry in rewritten_entries
+                                 ))
                     lines.append("")
                 lines.append("</details>\n")
 

@@ -4,9 +4,11 @@ from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.provenance import (
     Flow,
     Merge,
+    Rewrite,
     Split,
     classify_structural_changes,
     entity_flows,
+    structural_dict,
 )
 
 
@@ -167,6 +169,109 @@ def test_brand_new_component_is_added():
     arch_b = _arch(keep=["k.1", "k.2", "k.3"], fresh=["f.1", "f.2", "f.3"])
     changes = classify_structural_changes(arch_a, arch_b)
     assert changes.added == ("fresh",)
+
+
+def test_component_rewritten_in_place_is_not_both_added_and_removed():
+    # A component that keeps its name while every one of its entities churns
+    # has neither a significant outgoing nor a significant incoming flow. It
+    # used to fall into `added` *and* `removed`, so the same name was printed
+    # as "added `PkgAuth`" directly above "removed `PkgAuth`" while the
+    # component table showed it unchanged. It is a rewrite, not both.
+    arch_a = _arch(auth=[f"old.M{i:02d}" for i in range(12)])
+    arch_b = _arch(auth=[f"new.S{i:02d}" for i in range(12)])
+    changes = classify_structural_changes(arch_a, arch_b)
+
+    assert changes.added == ()
+    assert changes.removed == ()
+    assert changes.rewritten == (
+        Rewrite(name="auth", before=12, after=12, retained=0),
+    )
+    assert changes.stable == ()
+    assert changes.renamed == ()
+
+
+def test_rewrite_records_sub_threshold_retained_entities():
+    # One entity survives -- too few to be a significant self-flow (1 of 12 is
+    # under both min_entities=8 and min_share=0.20), but the reader deserves
+    # to know the rewrite was not total.
+    kept = "keep.K"
+    arch_a = _arch(auth=[kept] + [f"old.M{i:02d}" for i in range(11)])
+    arch_b = _arch(auth=[kept] + [f"new.S{i:02d}" for i in range(11)])
+    changes = classify_structural_changes(arch_a, arch_b)
+
+    assert changes.rewritten == (
+        Rewrite(name="auth", before=12, after=12, retained=1),
+    )
+    assert changes.added == ()
+    assert changes.removed == ()
+
+
+def test_empty_component_on_both_sides_is_stable_not_added_and_removed():
+    # Zero entities on both sides means zero flows, which also landed the name
+    # in `added` and `removed` at once. Nothing changed, so it is stable --
+    # calling it "rewritten" would overstate a component that has no content
+    # to rewrite.
+    arch_a = _arch(ghost=[], keep=["k.1", "k.2", "k.3"])
+    arch_b = _arch(ghost=[], keep=["k.1", "k.2", "k.3"])
+    changes = classify_structural_changes(arch_a, arch_b)
+
+    assert changes.added == ()
+    assert changes.removed == ()
+    assert changes.rewritten == ()
+    assert changes.stable == ("ghost", "keep")
+
+
+def test_emptied_component_that_keeps_its_name_is_a_rewrite_not_a_removal():
+    arch_a = _arch(auth=[f"old.M{i:02d}" for i in range(12)], keep=["k.1", "k.2", "k.3"])
+    arch_b = _arch(auth=[], keep=["k.1", "k.2", "k.3"])
+    changes = classify_structural_changes(arch_a, arch_b)
+
+    assert changes.removed == ()
+    assert changes.rewritten == (
+        Rewrite(name="auth", before=12, after=0, retained=0),
+    )
+
+
+def test_surviving_name_is_not_reported_removed_when_it_is_a_rename_target():
+    # `X`'s own entities are all deleted, but the name survives in arch_b as
+    # the destination of `util`'s entities. Reporting "renamed util -> X" and
+    # "removed X" in the same report contradicts itself: X is still there.
+    arch_a = _arch(X=["x.1", "x.2", "x.3"], util=["u.1", "u.2", "u.3"])
+    arch_b = _arch(X=["u.1", "u.2", "u.3"])
+    changes = classify_structural_changes(arch_a, arch_b)
+
+    assert changes.renamed == (("util", "X"),)
+    assert changes.removed == ()
+    assert changes.added == ()
+
+
+def test_added_and_removed_never_name_the_same_component():
+    arch_a = _arch(
+        auth=[f"old.M{i:02d}" for i in range(12)],
+        dead=["d.1", "d.2", "d.3"],
+    )
+    arch_b = _arch(
+        auth=[f"new.S{i:02d}" for i in range(12)],
+        fresh=["f.1", "f.2", "f.3"],
+    )
+    changes = classify_structural_changes(arch_a, arch_b)
+
+    assert set(changes.added) & set(changes.removed) == set()
+    assert changes.added == ("fresh",)
+    assert changes.removed == ("dead",)
+    assert [r.name for r in changes.rewritten] == ["auth"]
+
+
+def test_structural_dict_serialises_rewrites():
+    arch_a = _arch(auth=[f"old.M{i:02d}" for i in range(12)])
+    arch_b = _arch(auth=[f"new.S{i:02d}" for i in range(12)])
+    payload = structural_dict(classify_structural_changes(arch_a, arch_b))
+
+    assert payload["rewritten"] == [
+        {"name": "auth", "before": 12, "after": 12, "retained": 0}
+    ]
+    assert payload["added"] == []
+    assert payload["removed"] == []
 
 
 def test_both_sides_empty():

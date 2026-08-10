@@ -45,12 +45,22 @@ workflow builds from, not ahead of it.
   `compare`'s return also gains an additive `structural` key — the same
   provenance-derived classification `changelog_architecture` uses — carrying
   the accurate `added` / `removed` / `renamed` / `split` / `merged` /
-  `stable` component names. `matches` (the raw Hungarian 1:1 view) is
-  unchanged. `summary.components_added` / `summary.components_removed` keep
-  their keys but are now provenance-derived: a split product or a merge
-  source no longer counts as added/removed, so consumers asserting on the
+  `rewritten` / `stable` component names. `matches` (the raw Hungarian 1:1
+  view) is unchanged. `summary.components_added` /
+  `summary.components_removed` keep their keys but are now
+  provenance-derived: a split product, a merge source or a rewritten
+  component no longer counts as added/removed, so consumers asserting on the
   old Hungarian-unmatched counts will see different numbers for those
-  scenarios.
+  scenarios. `summary` also gains `components_rewritten`.
+
+- **Structural change output gains a `rewritten` bucket.** `added` and
+  `removed` are now about component *names*: a name is `removed` only when
+  the later architecture has none by that name, and `added` only when the
+  earlier one has none. `structural.rewritten` carries
+  `{name, before, after, retained}` entries for components whose name
+  survived while their entities churned entirely. Consumers that enumerate
+  the structural buckets — or that assume `added`/`removed` cover every
+  changed component — must handle the new key.
 
 ### Fixed
 
@@ -63,6 +73,18 @@ workflow builds from, not ahead of it.
   `## Architecture Drift Report` re-parented the report's `### Smells`
   section); it now accepts `heading_level` and `arcade-arch-diff` passes
   `heading_level=3`.
+- A component rewritten in place is no longer reported as **both** added and
+  removed. Such a component keeps its name while every entity it holds
+  churns, so it has no significant entity flow in either direction and fell
+  into `added` *and* `removed` at once: `arcade-arch-diff` printed
+  "added `PkgAuth`" directly above "removed `PkgAuth`" above a table showing
+  it unchanged, and the `arcade-compare-baseline` PR comment reported
+  `Matched Components: 2` alongside `Components Added: 1` /
+  `Components Removed: 1` for two components. It is now a single `rewritten`
+  entry (`12 → 12 entities, none in common`), counted in neither bucket. The
+  same fix covers a component present in both architectures with zero
+  entities, which is now `stable`, and a surviving name that is the
+  destination of a rename or merge, which is no longer also called removed.
 - `ingest(ref=...)` archives the `git rev-parse`-resolved SHA rather than
   the raw `ref` string, closing a TOCTOU window and a narrow argument-
   injection surface for refs beginning with `-`.

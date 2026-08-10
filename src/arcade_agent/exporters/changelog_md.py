@@ -104,13 +104,29 @@ def render_changelog_markdown(
             body.append(line)
         body.append("")
 
-    if components["added"] or components["removed"] or components["renamed"]:
+    # `rewritten` is absent from payloads produced before rewrites had a bucket
+    # of their own, when such a component was reported as added and removed at
+    # the same time; read it defensively so those still render.
+    rewritten = components.get("rewritten") or []
+    if (
+        components["added"]
+        or components["removed"]
+        or components["renamed"]
+        or rewritten
+    ):
         body.append(f"{sub_heading} Component changes")
         body.append("")
         for name in components["added"]:
             body.append(f"- added `{name}`")
         for name in components["removed"]:
             body.append(f"- removed `{name}`")
+        for entry in rewritten:
+            retained = entry["retained"]
+            in_common = "none in common" if not retained else f"{retained} in common"
+            body.append(
+                f"- rewritten `{entry['name']}` — {entry['before']} → "
+                f"{entry['after']} entities, {in_common}"
+            )
         for entry in components["renamed"]:
             body.append(f"- renamed `{entry['from']}` → `{entry['to']}`")
         body.append("")

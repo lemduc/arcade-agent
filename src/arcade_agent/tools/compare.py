@@ -32,8 +32,11 @@ def compare(
         ``structural`` classification (see ``structural_dict``), and summary
         stats. ``matches`` is the raw 1:1 Hungarian view and is kept as-is for
         similarity scoring; ``structural`` is the accurate split/merge-aware
-        view and is what ``components_added``/``components_removed`` in
-        ``summary`` are derived from. Consumers rendering component names as
+        view and is what ``components_added``/``components_removed``/
+        ``components_rewritten`` in ``summary`` are derived from. A component
+        that kept its name while its entities churned entirely is a
+        ``structural["rewritten"]`` entry, counted in neither added nor
+        removed. Consumers rendering component names as
         "added" or "removed" should read from ``structural``, not by
         inspecting ``matches`` for missing sides, to avoid reporting the same
         diff two different ways in one place.
@@ -50,6 +53,7 @@ def compare(
             "total_matches": len([m for m in matches if m["source"] and m["target"]]),
             "components_added": len(changes.added),
             "components_removed": len(changes.removed),
+            "components_rewritten": len(changes.rewritten),
             "splits": len(changes.split),
             "merges": len(changes.merged),
             "arch_a_components": len(arch_a.components),

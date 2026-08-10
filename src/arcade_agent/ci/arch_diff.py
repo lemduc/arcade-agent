@@ -168,6 +168,15 @@ def build_report(
         # Smells and metrics are excluded here because the "### Smells" and
         # "### Drift from Baseline" sections below already own them. Rendering
         # either twice would state the same fact in two formats.
+        #
+        # `graph_a` is deliberately the *current* graph: this CLI stores only a
+        # baseline Architecture, never the graph it came from. That is safe
+        # only because `smells_a=[]`/`metrics_a=[]` are supplied, so the
+        # changelog never runs detect_smells/compute_metrics over the pair --
+        # which would score the baseline's FQNs against the current graph. It
+        # also means the changelog's language-drift warning can never fire
+        # here (both language sets come from one graph); the warning still
+        # works for MCP/library callers that pass two real graphs, so it stays.
         changelog = changelog_architecture(
             baseline,
             graph,

@@ -90,15 +90,51 @@ class Merge:
 
 
 @dataclass(frozen=True)
+class Rewrite:
+    """One component whose name survived while its entities churned.
+
+    A component can keep its name and still share no significant entity flow
+    with its earlier self: every entity it held was deleted, renamed or moved
+    away, and everything it holds now is new. It is neither an addition (the
+    name was already there) nor a removal (the name is still there), so it
+    gets its own bucket rather than being reported as both at once.
+
+    Attributes:
+        name: The component name, identical in both architectures.
+        before: Entity count in the earlier architecture.
+        after: Entity count in the later architecture.
+        retained: Entities present under this name in both architectures.
+            Always below the significance threshold -- at or above it the
+            component would have been classified ``stable`` instead -- but
+            reported so a partial rewrite is not read as a total one.
+    """
+
+    name: str
+    before: int
+    after: int
+    retained: int
+
+
+@dataclass(frozen=True)
 class StructuralChanges:
     """Disjoint classification of components across two architectures.
 
-    The **classification** is the six top-level buckets, and it is disjoint:
+    The **classification** is the seven top-level buckets, and it is disjoint:
     every component of the earlier architecture is in exactly one of
-    ``removed``, ``split``, ``renamed`` or ``stable``, or is absorbed into a
-    ``merged`` entry. Every component of the later architecture is in exactly
-    one of ``added``, ``merged``, ``renamed`` or ``stable``, or is a split
-    product of a ``split`` entry.
+    ``removed``, ``split``, ``renamed``, ``rewritten`` or ``stable``, or is
+    absorbed into a ``merged`` entry. Every component of the later
+    architecture is in exactly one of ``added``, ``merged``, ``renamed``,
+    ``rewritten`` or ``stable``, or is a split product of a ``split`` entry.
+
+    ``added`` and ``removed`` are about *names*, not entities: a name is
+    ``removed`` only when the later architecture has no component by that
+    name, and ``added`` only when the earlier one has none. A name that
+    survives on both sides while its entities churn entirely is a
+    ``rewritten`` entry, never both an addition and a removal of the same
+    name. The one case with no top-level bucket of its own is a surviving
+    name whose earlier entities all vanished *and* whose later self is
+    already classified as a rename or merge target: it is reported through
+    that entry, since claiming the name was removed would contradict it.
 
     ``Split.targets`` and ``Merge.sources`` are **descriptive provenance, not
     classification**, and may legitimately name a component that is itself
@@ -109,7 +145,7 @@ class StructuralChanges:
     ``source``. Suppressing ``S`` from ``T``'s sources to force a stricter
     partition would misreport where half of ``T``'s entities came from, which
     is worse than the double-naming. The one-bucket-per-component guarantee
-    applies to the six top-level fields only, not to the names nested inside
+    applies to the seven top-level fields only, not to the names nested inside
     ``Split.targets`` / ``Merge.sources``.
     """
 
@@ -118,6 +154,7 @@ class StructuralChanges:
     renamed: tuple[tuple[str, str], ...]
     split: tuple[Split, ...]
     merged: tuple[Merge, ...]
+    rewritten: tuple[Rewrite, ...]
     stable: tuple[str, ...]
     flows: tuple[Flow, ...]
     rename_map: tuple[tuple[str, str], ...]
@@ -233,11 +270,52 @@ def classify_structural_changes(
         else:
             renamed.append((name, target))
 
+    # A name is only "removed" when the later architecture has no component by
+    # that name, and only "added" when the earlier one has none. Keying these
+    # off flow significance alone put a component that keeps its name while
+    # all of its entities churn into *both* buckets at once -- it has no
+    # significant flow in either direction -- so one diff was printed as
+    # "added `X`" directly above "removed `X`", above a table showing `X`
+    # unchanged. Such a name is a rewrite (below); a surviving name whose
+    # later self is already a rename or merge target is reported there.
+    names_a = {c.name for c in arch_a.components}
+    names_b = {c.name for c in arch_b.components}
     removed = tuple(
-        c.name for c in arch_a.components if not outgoing.get(c.name)
+        c.name
+        for c in arch_a.components
+        if not outgoing.get(c.name) and c.name not in names_b
     )
-    added = tuple(c.name for c in arch_b.components if not incoming.get(c.name))
+    added = tuple(
+        c.name
+        for c in arch_b.components
+        if not incoming.get(c.name) and c.name not in names_a
+    )
 
+    # Entities held under the same name in both architectures. Below the
+    # significance threshold by construction here: at or above it the name
+    # would have a self-flow and read as stable, split or merged instead.
+    retained_counts = {
+        flow.source: len(flow.entities) for flow in flows if flow.source == flow.target
+    }
+    rewritten: list[Rewrite] = []
+    for name in sorted(names_a & names_b):
+        if outgoing.get(name) or incoming.get(name):
+            continue
+        before, after = size_a.get(name, 0), size_b.get(name, 0)
+        if before == 0 and after == 0:
+            # Empty then, empty now: nothing changed, and nothing to rewrite.
+            stable.append(name)
+            continue
+        rewritten.append(
+            Rewrite(
+                name=name,
+                before=before,
+                after=after,
+                retained=retained_counts.get(name, 0),
+            )
+        )
+
+    stable.sort()
     rename_pairs = list(renamed) + [(name, name) for name in stable]
     rename_pairs.sort()
 
@@ -247,6 +325,7 @@ def classify_structural_changes(
         renamed=tuple(renamed),
         split=splits,
         merged=merges,
+        rewritten=tuple(rewritten),
         stable=tuple(stable),
         flows=flows,
         rename_map=tuple(rename_pairs),
@@ -257,8 +336,8 @@ def structural_dict(changes: StructuralChanges) -> dict[str, Any]:
     """Serialise the structural buckets to plain, JSON-safe collections.
 
     This is the single provenance-derived view of component identity: which
-    names are genuinely added, removed, renamed, split or merged. Both
-    ``tools/compare.py`` (as the additive ``structural`` key) and
+    names are genuinely added, removed, renamed, rewritten, split or merged.
+    Both ``tools/compare.py`` (as the additive ``structural`` key) and
     ``tools/changelog_architecture.py`` (as the ``components`` key) render
     this same shape so a consumer never sees two disagreeing accounts of the
     same diff.
@@ -268,7 +347,7 @@ def structural_dict(changes: StructuralChanges) -> dict[str, Any]:
 
     Returns:
         A dict with ``added``, ``removed``, ``renamed``, ``split``,
-        ``merged`` and ``stable`` keys.
+        ``merged``, ``rewritten`` and ``stable`` keys.
     """
     return {
         "added": list(changes.added),
@@ -281,6 +360,15 @@ def structural_dict(changes: StructuralChanges) -> dict[str, Any]:
         "merged": [
             {"into": m.target, "from": list(m.sources), "entities": dict(m.entities)}
             for m in changes.merged
+        ],
+        "rewritten": [
+            {
+                "name": r.name,
+                "before": r.before,
+                "after": r.after,
+                "retained": r.retained,
+            }
+            for r in changes.rewritten
         ],
         "stable": list(changes.stable),
     }

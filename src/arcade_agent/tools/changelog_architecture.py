@@ -44,8 +44,8 @@ def _languages(graph: DependencyGraph) -> list[str]:
 @tool(
     name="changelog_architecture",
     description="Produce an architectural changelog between two versions: components "
-    "added, removed, renamed, split or merged; entities that changed component; "
-    "smells gained or resolved; and metric deltas.",
+    "added, removed, renamed, rewritten, split or merged; entities that changed "
+    "component; smells gained or resolved; and metric deltas.",
 )
 def changelog_architecture(
     arch_a: Architecture,

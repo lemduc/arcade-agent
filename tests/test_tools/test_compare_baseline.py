@@ -324,6 +324,42 @@ def test_build_comment_new_components_agrees_with_components_added_count_for_a_s
     assert "| Splits | 1 |" in comment
 
 
+def test_build_comment_does_not_report_a_rewritten_component_as_added_and_removed():
+    """Same contradiction class as the split test above, second scenario.
+
+    A component whose name survives while all of its entities churn was
+    reported as `Components Added: 1` *and* `Components Removed: 1` -- with
+    `Matched Components: 2` and a `component_rows` entry rendering the very
+    same component as `matched` in the same comment. It is one rewritten
+    component, and the counts must say so.
+    """
+    baseline = _multi_entity_snapshot("abc1234", [
+        {"name": "auth", "entities": [f"pkg.legacy.mod{i:02d}.C" for i in range(12)]},
+        {"name": "core", "entities": [f"pkg.core.mod{i:02d}.C" for i in range(12)]},
+    ])
+    current = _multi_entity_snapshot("def5678", [
+        {"name": "auth", "entities": [f"pkg.service.mod{i:02d}.C" for i in range(12)]},
+        {"name": "core", "entities": [f"pkg.core.mod{i:02d}.C" for i in range(12)]},
+    ])
+
+    comment = build_comment(current, baseline)
+    payload = build_report_payload(current, baseline)
+
+    assert "| Components Added | 0 |" in comment
+    assert "| Components Removed | 0 |" in comment
+    assert "| Components Rewritten | 1 |" in comment
+    assert "New components:" not in comment
+    assert "Removed components:" not in comment
+
+    structural = payload["a2a_result"]["structural"]
+    assert structural["rewritten"] == [
+        {"name": "auth", "before": 12, "after": 12, "retained": 0}
+    ]
+
+    statuses = {row["current_name"]: row["status"] for row in payload["component_rows"]}
+    assert statuses == {"auth": "matched", "core": "matched"}
+
+
 def test_build_comment_shows_score_drivers_when_available():
     current = _snapshot("def5678", "Core", 1, 1)
     current["derived_metrics"] = {

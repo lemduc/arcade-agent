@@ -86,6 +86,37 @@ def test_components_added_removed_renamed_are_rendered() -> None:
     assert "- renamed `util` → `common`" in out
 
 
+def test_rewritten_component_is_rendered_instead_of_added_plus_removed() -> None:
+    out = render_changelog_markdown(_changelog(components={
+        "added": [], "removed": [], "renamed": [],
+        "stable": [], "split": [], "merged": [],
+        "rewritten": [{"name": "PkgAuth", "before": 12, "after": 12, "retained": 0}],
+    }))
+    assert "### Component changes" in out
+    assert "- rewritten `PkgAuth` — 12 → 12 entities, none in common" in out
+    assert "- added `PkgAuth`" not in out
+    assert "- removed `PkgAuth`" not in out
+
+
+def test_rewritten_component_reports_retained_entities() -> None:
+    out = render_changelog_markdown(_changelog(components={
+        "added": [], "removed": [], "renamed": [],
+        "stable": [], "split": [], "merged": [],
+        "rewritten": [{"name": "PkgAuth", "before": 12, "after": 9, "retained": 1}],
+    }))
+    assert "- rewritten `PkgAuth` — 12 → 9 entities, 1 in common" in out
+
+
+def test_payload_without_a_rewritten_key_still_renders() -> None:
+    # `components` payloads persisted before rewrites existed have no
+    # "rewritten" key; rendering one must not raise.
+    out = render_changelog_markdown(_changelog(components={
+        "added": ["parsers.kotlin"], "removed": [], "renamed": [],
+        "stable": [], "split": [], "merged": [],
+    }))
+    assert "- added `parsers.kotlin`" in out
+
+
 def test_responsibility_shifts_are_rendered() -> None:
     out = render_changelog_markdown(_changelog(
         responsibility_shifts=[{"entity": "a.b.C", "from": "auth", "to": "api"}]

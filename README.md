@@ -75,7 +75,7 @@ print(len(result.architecture.components), len(result.smells))
 | `detect_smells` | Find dependency cycles, concern overload, scattered functionality, link overload (heuristic or LLM-powered) |
 | `compute_metrics` | Calculate RCI, TurboMQ, connectivity metrics |
 | `compare` | A2A architecture comparison across versions |
-| `changelog_architecture` | Architectural changelog between two versions: components added/removed/renamed/split/merged, entities that changed component, smell and metric deltas |
+| `changelog_architecture` | Architectural changelog between two versions: components added/removed/renamed/rewritten/split/merged, entities that changed component, smell and metric deltas |
 | `visualize` | Generate HTML reports, DOT, Mermaid, JSON, RSF |
 | `query` | Explore recovered architecture interactively |
 | `summarize` | Codebase overview with package tree, hotspots, entry points; drill-down via `focus` |
