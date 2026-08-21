@@ -3,14 +3,16 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
-  # Manual fallback: dispatch on the release commit (usually main's head) to
-  # publish it to PyPI and create the tag + GitHub release in one run.
+  # Publish-on-version-bump: a push to main that changes pyproject.toml (or
+  # this workflow) publishes the version it declares — if PyPI doesn't already
+  # have it — and creates the matching tag + GitHub release.
+  push:
+    branches: [main]
+    paths:
+      - pyproject.toml
+      - .github/workflows/publish.yml
+  # Manual fallback: same behavior as the push trigger, run on demand.
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag to create (e.g. v0.3.0)"
-        required: true
-        type: string
 
 jobs:
   publish:
@@ -28,23 +30,40 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Determine version and whether PyPI already has it
+        id: meta
+        run: |
+          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          if curl -fsS "https://pypi.org/pypi/arcade-agent/$VERSION/json" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "PyPI already has $VERSION - nothing to publish."
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install build tools
+        if: steps.meta.outputs.published == 'false'
         run: pip install build
 
       - name: Build package
+        if: steps.meta.outputs.published == 'false'
         run: python -m build
 
       - name: Publish to PyPI
+        if: steps.meta.outputs.published == 'false'
         uses: pypa/gh-action-pypi-publish@v1.14.0
 
-      # Runs created via workflow_dispatch have no tag or release object yet;
-      # create both at the built SHA after a successful publish.
-      # (GITHUB_TOKEN-created releases do not re-trigger this workflow, so
-      # this cannot double-publish.)
-      - name: Create tag + GitHub release (dispatch runs only)
-        if: github.event_name == 'workflow_dispatch'
+      # Push/dispatch runs have no tag or release object yet; create both at
+      # the built SHA after a successful publish. (GITHUB_TOKEN-created
+      # releases do not re-trigger this workflow, so this cannot
+      # double-publish.)
+      - name: Create tag + GitHub release
+        if: github.event_name != 'release' && steps.meta.outputs.published == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
         run: |
-          gh release create "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "${{ inputs.tag }}" --generate-notes
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "$TAG" --generate-notes
