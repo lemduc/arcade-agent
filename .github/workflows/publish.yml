@@ -3,9 +3,14 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
-  # Manual fallback: dispatch on a pushed release tag (e.g. v0.3.0) to publish
-  # that tag to PyPI and create its GitHub release in one run.
+  # Manual fallback: dispatch on the release commit (usually main's head) to
+  # publish it to PyPI and create the tag + GitHub release in one run.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create (e.g. v0.3.0)"
+        required: true
+        type: string
 
 jobs:
   publish:
@@ -32,13 +37,14 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@v1.14.0
 
-      # Runs created via workflow_dispatch have no release object yet; create
-      # it after a successful publish. (GITHUB_TOKEN-created releases do not
-      # re-trigger this workflow, so this cannot double-publish.)
-      - name: Create GitHub release (dispatch runs only)
+      # Runs created via workflow_dispatch have no tag or release object yet;
+      # create both at the built SHA after a successful publish.
+      # (GITHUB_TOKEN-created releases do not re-trigger this workflow, so
+      # this cannot double-publish.)
+      - name: Create tag + GitHub release (dispatch runs only)
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" --verify-tag --generate-notes
+          gh release create "${{ inputs.tag }}" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "${{ inputs.tag }}" --generate-notes
