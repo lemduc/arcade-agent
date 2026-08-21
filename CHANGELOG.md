@@ -5,11 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.3.0 — 2026-08-21
 
-Ships as **0.3.0** — the next release after 0.2.0. `pyproject.toml` still reads
-`0.2.0`; it is bumped as part of cutting the GitHub release that the publish
-workflow builds from, not ahead of it.
+Also in this release: **Rust** parser support, **polyglot multi-language
+parsing** (`--language multi`), and TurboMQ redefined as the raw sum of
+cluster factors with BasicMQ as the normalized variant — see the linked PRs
+on the release page for details.
 
 ### Added
 
